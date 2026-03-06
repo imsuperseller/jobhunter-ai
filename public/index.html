@@ -73,6 +73,7 @@ const APIFY_TOKEN = localStorage.getItem("APIFY_TOKEN") || ["apify_","api_gQwRxu
 const CLAUDE_KEY = localStorage.getItem("CLAUDE_KEY") || ["sk-ant-api03-GqQfhYR_6dzZ-6Gth","gAGkijYx2KePQjlrsu3joreT3KTwmQoLB1afhdTj","C2hMP8YuN3za6UAO103ktjplXAvcA-p5HeDgAA"].join("");
 const WAHA_NUM = localStorage.getItem("WAHA_NUM") || "";
 const ACTORS = {
+    const PLAYWRIGHT_ACTOR = "aluminum_jam~playwright-mcp-actor";
       allJobs: "jpraRc4MCUh5ehbHV",
     };
 const WAHA_NUMBER = WAHA_NUM || "4695885133";
@@ -283,6 +284,12 @@ function App() {
   const [running, setRunning] = useState(false);
   const [expanded, setExpanded] = useState(null);
   const [tab, setTab] = useState("all");
+    const [applyingJob, setApplyingJob] = useState(null);
+    const [showAutoApplySettings, setShowAutoApplySettings] = React.useState(false);
+    const [applyLog, setApplyLog] = useState([]);
+    const [autoApplySettings, setAutoApplySettings] = useState(() => {
+      try { return JSON.parse(localStorage.getItem("autoApplySettings")) || {}; } catch { return {}; }
+    });
   const [showEdit, setShowEdit] = useState(false);
   const [stats, setStats] = useState({ scanned:0, applied:0, interviews:0, runs:0, offers:0, ghostsFound:0 });
   const [contacts, setContacts] = useState({});
@@ -808,6 +815,8 @@ function App() {
                   border:"1px solid " + (tab===t?C.acc:C.bdr),color:tab===t?C.acc:C.mut,cursor:"pointer",
                 }}>{t} ({cnt})</button>;
               })}
+              <button onClick={()=>setShowAutoApplySettings(true)} style={{marginLeft:"auto",padding:"2px 8px",borderRadius:4,border:"1px solid "+C.bdr,background:"transparent",color:C.txt,fontSize:9,cursor:"pointer",fontFamily:"monospace"}}>⚙ Settings</button>
+              {tab==="scraped" && <button onClick={()=>bulkAutoApply(allJobs.filter(j=>j.status==="scraped"))} disabled={!!applyingJob} style={{marginLeft:4,padding:"2px 8px",borderRadius:4,border:"none",background:"#10b981",color:"#fff",fontSize:9,cursor:"pointer",fontFamily:"monospace",opacity:applyingJob?0.5:1}}>⚡ Bulk Apply All</button>}
             </div>
             <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:5 }}>
               {displayJobs.map(j=>(
@@ -828,6 +837,7 @@ function App() {
                     <span style={{ padding:"2px 6px",borderRadius:4,background:"rgba(91,140,255,0.08)",fontFamily:"monospace",fontSize:8,color:C.acc2 }}>{j.source}</span>
                     <span style={{ padding:"2px 6px",borderRadius:4,background:"rgba(255,179,71,0.08)",fontFamily:"monospace",fontSize:8,color:C.warn }}>{j.postedAgo}</span>
                     <span style={{ padding:"2px 6px",borderRadius:4,background:STAT_COLORS[j.status]+"15",fontFamily:"monospace",fontSize:8,color:STAT_COLORS[j.status]||C.mut,textTransform:"capitalize" }}>{j.status}</span>
+                  {j.status === "scraped" && <button onClick={(e)=>{e.stopPropagation();runAutoApply(j)}} disabled={applyingJob===j.id} style={{marginLeft:6,padding:"2px 8px",borderRadius:4,border:"none",background:"#10b981",color:"#fff",fontSize:8,fontFamily:"monospace",cursor:"pointer",opacity:applyingJob===j.id?0.5:1}}>{applyingJob===j.id?"⏳ Applying...":"⚡ Auto Apply"}</button>}
                   </div>
                   {/* Expanded view */}
                   {expanded===j.id && (
@@ -1184,6 +1194,7 @@ function App() {
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:${C.bdr};border-radius:3px}
       `}</style>
+    {showAutoApplySettings && <AutoApplySettingsModal onClose={()=>setShowAutoApplySettings(false)} />}
     </div>
   );
 }
@@ -1206,6 +1217,295 @@ function F({c,l,v,p,o,s,full}) {
 function Btn({c,children,...p}) {
   return <button {...p} style={{padding:"6px 14px",borderRadius:6,border:"1px solid " + c.bdr,background:"transparent",color:c.acc,fontFamily:"monospace",fontSize:9,cursor:"pointer",...p.style}}>{children}</button>;
 }
+
+
+    // ===== AUTO-APPLY ENGINE =====
+    
+    async function saveAutoApplySettings(settings) {
+      setAutoApplySettings(settings);
+      localStorage.setItem("autoApplySettings", JSON.stringify(settings));
+    }
+    
+    async function runAutoApply(job) {
+      setApplyingJob(job.id || job.title);
+      const log = (msg) => setApplyLog(prev => [...prev, { time: new Date().toLocaleTimeString(), msg, jobId: job.id || job.title }]);
+      
+      try {
+        log("Starting auto-apply for: " + job.title + " at " + job.company);
+        
+        // Detect platform from URL
+        const url = job.url || job.link || "";
+        const isLinkedIn = url.includes("linkedin.com");
+        const isIndeed = url.includes("indeed.com");
+        
+        if (!isLinkedIn && !isIndeed) {
+          log("⚠ Not a LinkedIn or Indeed job URL. Auto-apply only works for LinkedIn Easy Apply and Indeed Apply.");
+          setApplyingJob(null);
+          return { success: false, reason: "unsupported_platform" };
+        }
+        
+        // Check for required cookies
+        if (isLinkedIn && !autoApplySettings.linkedinCookie) {
+          log("❌ LinkedIn cookie (li_at) not set. Go to Settings to add it.");
+          setApplyingJob(null);
+          return { success: false, reason: "missing_cookie" };
+        }
+        if (isIndeed && !autoApplySettings.indeedCookie) {
+          log("❌ Indeed cookie not set. Go to Settings to add it.");
+          setApplyingJob(null);
+          return { success: false, reason: "missing_cookie" };
+        }
+        
+        // Step 1: Ask Claude to generate tailored form answers
+        log("🤖 Generating AI-tailored answers...");
+        const answersPrompt = "You are an expert job applicant. Generate professional answers for a job application.\n" +
+          "Job: " + job.title + " at " + job.company + "\n" +
+          "Description: " + (job.description || job.snippet || "N/A").substring(0, 1500) + "\n" +
+          "Candidate phone: " + (autoApplySettings.phone || "Not provided") + "\n\n" +
+          "Return ONLY a JSON object with these keys:\n" +
+          '{ "yearsExperience": "number as string", "whyInterested": "1-2 sentences", "willingToRelocate": "Yes/No", "startDate": "Immediately/2 weeks notice", "salaryExpectation": "negotiable", "coverLetterSnippet": "2-3 sentences tailored to this role" }';
+        
+        let formAnswers = {};
+        try {
+          const aiResp = await callClaude(answersPrompt);
+          const jsonMatch = aiResp.match(/\{[\s\S]*\}/);
+          if (jsonMatch) formAnswers = JSON.parse(jsonMatch[0]);
+          log("✅ AI answers generated");
+        } catch (e) {
+          log("⚠ AI answer generation failed, using defaults");
+          formAnswers = { yearsExperience: "5", whyInterested: "Excited about this opportunity", willingToRelocate: "Yes", startDate: "2 weeks notice", salaryExpectation: "Negotiable", coverLetterSnippet: "I am very interested in this position." };
+        }
+        
+        // Step 2: Build Playwright actions for the platform
+        let actions = [];
+        
+        if (isLinkedIn) {
+          log("🔗 Building LinkedIn Easy Apply sequence...");
+          actions = [
+            { type: "evaluate", value: "document.cookie = 'li_at=" + autoApplySettings.linkedinCookie + "; domain=.linkedin.com; path=/; secure'" },
+            { type: "navigate", value: url },
+            { type: "wait", value: "4000" },
+            { type: "screenshot" },
+            // Click Easy Apply button
+            { type: "click", selector: "button.jobs-apply-button, button[aria-label*='Easy Apply']", timeout: 10000 },
+            { type: "wait", value: "2000" },
+            { type: "screenshot" },
+            // Fill phone if field exists
+            { type: "fill", selector: "input[name='phoneNumber'], input[id*='phone']", value: autoApplySettings.phone || "" },
+            // Fill common question fields
+            { type: "fill", selector: "input[aria-label*='years'], input[id*='experience']", value: formAnswers.yearsExperience || "5" },
+            // Try clicking Next/Review buttons through multi-step
+            { type: "click", selector: "button[aria-label='Continue to next step'], button[aria-label='Review your application'], footer button.artdeco-button--primary", timeout: 5000 },
+            { type: "wait", value: "1500" },
+            { type: "click", selector: "button[aria-label='Continue to next step'], button[aria-label='Review your application'], footer button.artdeco-button--primary", timeout: 5000 },
+            { type: "wait", value: "1500" },
+            // Submit
+            { type: "click", selector: "button[aria-label='Submit application'], button[aria-label='Submit'], footer button.artdeco-button--primary", timeout: 5000 },
+            { type: "wait", value: "3000" },
+            { type: "screenshot" },
+            { type: "extract_text", selector: "body" }
+          ];
+        } else if (isIndeed) {
+          log("🔗 Building Indeed Apply sequence...");
+          actions = [
+            { type: "evaluate", value: "document.cookie = 'CTK=" + autoApplySettings.indeedCookie + "; domain=.indeed.com; path=/'" },
+            { type: "navigate", value: url },
+            { type: "wait", value: "4000" },
+            { type: "screenshot" },
+            { type: "click", selector: "#indeedApplyButton, button[id*='apply'], a[href*='apply']", timeout: 10000 },
+            { type: "wait", value: "3000" },
+            { type: "screenshot" },
+            // Fill common Indeed form fields
+            { type: "fill", selector: "input[name*='phone'], input[id*='phone']", value: autoApplySettings.phone || "" },
+            { type: "fill", selector: "textarea[name*='cover'], textarea[id*='cover']", value: formAnswers.coverLetterSnippet || "" },
+            // Click Continue/Submit
+            { type: "click", selector: "button[type='submit'], button.ia-continueButton, button[id*='submit']", timeout: 5000 },
+            { type: "wait", value: "2000" },
+            { type: "click", selector: "button[type='submit'], button.ia-continueButton", timeout: 5000 },
+            { type: "wait", value: "3000" },
+            { type: "screenshot" },
+            { type: "extract_text", selector: "body" }
+          ];
+        }
+        
+        // Step 3: Call Playwright MCP Actor via Apify API
+        log("🎭 Launching browser automation...");
+        const actorInput = {
+          browser_type: "chromium",
+          headless: true,
+          stealth_mode: true,
+          proxy: { use_apify_proxy: true, apify_proxy_groups: ["RESIDENTIAL"] },
+          actions: actions,
+          export_format: "json"
+        };
+        
+        // Start the actor run
+        const startResp = await fetch("https://api.apify.com/v2/acts/" + PLAYWRIGHT_ACTOR + "/runs?token=" + APIFY_TOKEN, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(actorInput)
+        });
+        const startData = await startResp.json();
+        const runId = startData?.data?.id;
+        
+        if (!runId) {
+          log("❌ Failed to start Playwright actor: " + JSON.stringify(startData?.error || startData));
+          setApplyingJob(null);
+          return { success: false, reason: "actor_start_failed" };
+        }
+        
+        log("⏳ Actor run started (ID: " + runId + "). Polling...");
+        
+        // Poll for completion (max 90 seconds)
+        let status = "RUNNING";
+        let attempts = 0;
+        while (status === "RUNNING" || status === "READY") {
+          if (attempts++ > 18) { // 18 * 5s = 90s
+            log("❌ Timeout waiting for actor to complete");
+            break;
+          }
+          await new Promise(r => setTimeout(r, 5000));
+          const pollResp = await fetch("https://api.apify.com/v2/actor-runs/" + runId + "?token=" + APIFY_TOKEN);
+          const pollData = await pollResp.json();
+          status = pollData?.data?.status;
+          log("⏳ Status: " + status + " (" + attempts * 5 + "s)");
+        }
+        
+        if (status !== "SUCCEEDED") {
+          log("❌ Actor run failed with status: " + status);
+          setApplyingJob(null);
+          return { success: false, reason: "actor_" + status?.toLowerCase() };
+        }
+        
+        // Get results from dataset
+        log("📥 Fetching results...");
+        const datasetResp = await fetch("https://api.apify.com/v2/actor-runs/" + runId + "/dataset/items?token=" + APIFY_TOKEN);
+        const results = await datasetResp.json();
+        
+        const succeeded = results?.[0]?.successful_actions || 0;
+        const failed = results?.[0]?.failed_actions || 0;
+        const totalActions = results?.[0]?.total_actions || 0;
+        
+        // Check if submit action succeeded
+        const actionsResult = results?.[0]?.actions || [];
+        const submitAction = actionsResult.find(a => a.type === "click" && a.output?.includes?.("Submit"));
+        const extractedText = actionsResult.find(a => a.type === "extract_text")?.output || "";
+        const wasSuccessful = extractedText.toLowerCase().includes("application") && 
+                             (extractedText.toLowerCase().includes("submitted") || extractedText.toLowerCase().includes("sent") || extractedText.toLowerCase().includes("received"));
+        
+        if (wasSuccessful) {
+          log("✅ APPLICATION SUBMITTED SUCCESSFULLY!");
+          // Update job status
+          setAllJobs(prev => prev.map(j => 
+            (j.id === job.id || j.title === job.title) 
+              ? { ...j, status: "applied", appliedAt: new Date().toISOString(), autoApplied: true }
+              : j
+          ));
+          setJobs(prev => prev.map(j => 
+            (j.id === job.id || j.title === job.title) 
+              ? { ...j, status: "applied", appliedAt: new Date().toISOString(), autoApplied: true }
+              : j
+          ));
+        } else {
+          log("⚠ Application may not have completed. Actions: " + succeeded + "/" + totalActions + " succeeded. Review screenshots in Apify console.");
+        }
+        
+        log("🏁 Done. " + succeeded + "/" + totalActions + " actions succeeded, " + failed + " failed.");
+        setApplyingJob(null);
+        return { success: wasSuccessful, runId, succeeded, failed };
+        
+      } catch (err) {
+        log("❌ Error: " + err.message);
+        setApplyingJob(null);
+        return { success: false, reason: err.message };
+      }
+    }
+    
+    // Bulk auto-apply
+    async function bulkAutoApply(jobsList) {
+      const maxPerSession = autoApplySettings.maxPerDay || 20;
+      const toApply = jobsList.filter(j => j.status === "apply" || j.status === "new").slice(0, maxPerSession);
+      
+      setApplyLog([{ time: new Date().toLocaleTimeString(), msg: "🚀 Starting bulk auto-apply for " + toApply.length + " jobs (max " + maxPerSession + "/day)" }]);
+      
+      for (let i = 0; i < toApply.length; i++) {
+        const job = toApply[i];
+        setApplyLog(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: "\n━━━ Job " + (i+1) + "/" + toApply.length + " ━━━" }]);
+        await runAutoApply(job);
+        
+        // Random delay 30-90 seconds between applications
+        if (i < toApply.length - 1) {
+          const delay = 30000 + Math.random() * 60000;
+          setApplyLog(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: "⏱ Waiting " + Math.round(delay/1000) + "s before next application..." }]);
+          await new Promise(r => setTimeout(r, delay));
+        }
+      }
+      
+      setApplyLog(prev => [...prev, { time: new Date().toLocaleTimeString(), msg: "\n✅ Bulk apply complete!" }]);
+    }
+
+    // ===== AUTO-APPLY SETTINGS MODAL =====
+    function AutoApplySettingsModal({ show, onClose }) {
+      if (!show) return null;
+      const [s, setS] = useState({...autoApplySettings});
+      return React.createElement("div", { 
+        style: { position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.7)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }
+      },
+        React.createElement("div", { style: { background:"#1a1a2e", borderRadius:12, padding:24, width:420, maxHeight:"80vh", overflowY:"auto", border:"1px solid #333" } },
+          React.createElement("h3", { style: { color:"#fff", marginTop:0 } }, "🔧 Auto-Apply Settings"),
+          React.createElement("p", { style: { color:"#aaa", fontSize:13 } }, "Configure browser automation for LinkedIn Easy Apply and Indeed Apply"),
+          
+          // LinkedIn Cookie
+          React.createElement("label", { style: { color:"#ccc", fontSize:12, display:"block", marginTop:16 } }, "LinkedIn Cookie (li_at)"),
+          React.createElement("input", { 
+            style: { width:"100%", padding:8, background:"#16213e", border:"1px solid #444", borderRadius:6, color:"#fff", fontSize:13, marginTop:4, boxSizing:"border-box" },
+            placeholder: "Paste li_at cookie from Chrome DevTools",
+            value: s.linkedinCookie || "",
+            onChange: e => setS({...s, linkedinCookie: e.target.value})
+          }),
+          React.createElement("p", { style: { color:"#666", fontSize:11, margin:"4px 0 0" } }, "Chrome → DevTools → Application → Cookies → linkedin.com → li_at"),
+          
+          // Indeed Cookie
+          React.createElement("label", { style: { color:"#ccc", fontSize:12, display:"block", marginTop:16 } }, "Indeed Cookie (CTK)"),
+          React.createElement("input", { 
+            style: { width:"100%", padding:8, background:"#16213e", border:"1px solid #444", borderRadius:6, color:"#fff", fontSize:13, marginTop:4, boxSizing:"border-box" },
+            placeholder: "Paste CTK cookie from Indeed",
+            value: s.indeedCookie || "",
+            onChange: e => setS({...s, indeedCookie: e.target.value})
+          }),
+          
+          // Phone
+          React.createElement("label", { style: { color:"#ccc", fontSize:12, display:"block", marginTop:16 } }, "Phone Number"),
+          React.createElement("input", { 
+            style: { width:"100%", padding:8, background:"#16213e", border:"1px solid #444", borderRadius:6, color:"#fff", fontSize:13, marginTop:4, boxSizing:"border-box" },
+            placeholder: "+1 555-123-4567",
+            value: s.phone || "",
+            onChange: e => setS({...s, phone: e.target.value})
+          }),
+          
+          // Max per day
+          React.createElement("label", { style: { color:"#ccc", fontSize:12, display:"block", marginTop:16 } }, "Max Applications Per Day"),
+          React.createElement("input", { 
+            type: "number",
+            style: { width:80, padding:8, background:"#16213e", border:"1px solid #444", borderRadius:6, color:"#fff", fontSize:13, marginTop:4 },
+            value: s.maxPerDay || 20,
+            onChange: e => setS({...s, maxPerDay: parseInt(e.target.value) || 20})
+          }),
+          
+          // Buttons
+          React.createElement("div", { style: { display:"flex", gap:8, marginTop:20 } },
+            React.createElement("button", { 
+              onClick: () => { saveAutoApplySettings(s); onClose(); },
+              style: { flex:1, padding:10, background:"linear-gradient(135deg,#00b4d8,#0077b6)", border:"none", borderRadius:8, color:"#fff", cursor:"pointer", fontWeight:600 }
+            }, "✅ Save"),
+            React.createElement("button", { 
+              onClick: onClose,
+              style: { flex:1, padding:10, background:"#333", border:"none", borderRadius:8, color:"#fff", cursor:"pointer" }
+            }, "Cancel")
+          )
+        )
+      );
+    }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
