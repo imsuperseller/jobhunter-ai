@@ -1447,68 +1447,49 @@ function Btn({c,children,...p}) {
     // ===== AUTO-APPLY SETTINGS MODAL =====
     function AutoApplySettingsModal({ show, onClose }) {
       if (!show) return null;
-      const [s, setS] = useState({...autoApplySettings});
-      return React.createElement("div", { 
-        style: { position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.7)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }
-      },
-        React.createElement("div", { style: { background:"#1a1a2e", borderRadius:12, padding:24, width:420, maxHeight:"80vh", overflowY:"auto", border:"1px solid #333" } },
-          React.createElement("h3", { style: { color:"#fff", marginTop:0 } }, "🔧 Auto-Apply Settings"),
-          React.createElement("p", { style: { color:"#aaa", fontSize:13 } }, "Configure browser automation for LinkedIn Easy Apply and Indeed Apply"),
-          
-          // LinkedIn Cookie
-          React.createElement("label", { style: { color:"#ccc", fontSize:12, display:"block", marginTop:16 } }, "LinkedIn Cookie (li_at)"),
-          React.createElement("input", { 
-            style: { width:"100%", padding:8, background:"#16213e", border:"1px solid #444", borderRadius:6, color:"#fff", fontSize:13, marginTop:4, boxSizing:"border-box" },
-            placeholder: "Paste li_at cookie from Chrome DevTools",
-            value: s.linkedinCookie || "",
-            onChange: e => setS({...s, linkedinCookie: e.target.value})
-          }),
-          React.createElement("p", { style: { color:"#666", fontSize:11, margin:"4px 0 0" } }, "Chrome → DevTools → Application → Cookies → linkedin.com → li_at"),
-          
-          // Indeed Cookie
-          React.createElement("label", { style: { color:"#ccc", fontSize:12, display:"block", marginTop:16 } }, "Indeed Cookie (CTK)"),
-          React.createElement("input", { 
-            style: { width:"100%", padding:8, background:"#16213e", border:"1px solid #444", borderRadius:6, color:"#fff", fontSize:13, marginTop:4, boxSizing:"border-box" },
-            placeholder: "Paste CTK cookie from Indeed",
-            value: s.indeedCookie || "",
-            onChange: e => setS({...s, indeedCookie: e.target.value})
-          }),
-          
-          // Phone
-          React.createElement("label", { style: { color:"#ccc", fontSize:12, display:"block", marginTop:16 } }, "Phone Number"),
-          React.createElement("input", { 
-            style: { width:"100%", padding:8, background:"#16213e", border:"1px solid #444", borderRadius:6, color:"#fff", fontSize:13, marginTop:4, boxSizing:"border-box" },
-            placeholder: "+1 555-123-4567",
-            value: s.phone || "",
-            onChange: e => setS({...s, phone: e.target.value})
-          }),
-          
-          // Max per day
-          React.createElement("label", { style: { color:"#ccc", fontSize:12, display:"block", marginTop:16 } }, "Max Applications Per Day"),
-          React.createElement("input", { 
-            type: "number",
-            style: { width:80, padding:8, background:"#16213e", border:"1px solid #444", borderRadius:6, color:"#fff", fontSize:13, marginTop:4 },
-            value: s.maxPerDay || 20,
-            onChange: e => setS({...s, maxPerDay: parseInt(e.target.value) || 20})
-          }),
-          
-          // Buttons
-          React.createElement("div", { style: { display:"flex", gap:8, marginTop:20 } },
-            React.createElement("button", { 
-              onClick: () => { saveAutoApplySettings(s); onClose(); },
-              style: { flex:1, padding:10, background:"linear-gradient(135deg,#00b4d8,#0077b6)", border:"none", borderRadius:8, color:"#fff", cursor:"pointer", fontWeight:600 }
-            }, "✅ Save"),
-            React.createElement("button", { 
-              onClick: onClose,
-              style: { flex:1, padding:10, background:"#333", border:"none", borderRadius:8, color:"#fff", cursor:"pointer" }
-            }, "Cancel")
+      const loadSettings = () => { try { return JSON.parse(localStorage.getItem("autoApplySettings")) || {}; } catch { return {}; } };
+      const [settings, setSettings] = React.useState(loadSettings);
+      const [saved, setSaved] = React.useState(false);
+      const C = typeof THEMES !== 'undefined' ? THEMES[document.documentElement.getAttribute('data-theme') || 'dark'] || THEMES.dark : {bg:'#0a0a0a',card:'#141414',bdr:'#2a2a2a',txt:'#e0e0e0',dim:'#888',accent:'#10b981'};
+      const handleSave = () => {
+        localStorage.setItem("autoApplySettings", JSON.stringify(settings));
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      };
+      const inputStyle = {width:"100%",padding:"6px 8px",borderRadius:4,border:"1px solid "+C.bdr,background:C.bg,color:C.txt,fontSize:11,fontFamily:"monospace"};
+      const labelStyle = {display:"block",marginBottom:3,fontSize:10,color:C.dim,fontFamily:"monospace"};
+      return React.createElement("div", {style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"},onClick:onClose},
+        React.createElement("div", {style:{background:C.card,border:"1px solid "+C.bdr,borderRadius:8,padding:20,width:420,maxWidth:"90vw",maxHeight:"80vh",overflowY:"auto"},onClick:e=>e.stopPropagation()},
+          React.createElement("div", {style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}},
+            React.createElement("h3", {style:{margin:0,color:C.txt,fontSize:14,fontFamily:"monospace"}}, "\u2699 Auto-Apply Settings"),
+            React.createElement("button", {onClick:onClose,style:{background:"none",border:"none",color:C.dim,fontSize:18,cursor:"pointer"}}, "\u2715")
+          ),
+          React.createElement("div", {style:{marginBottom:12}},
+            React.createElement("label", {style:labelStyle}, "LinkedIn Session (li_at)"),
+            React.createElement("input", {type:"text",value:settings.linkedinCookie||"",onChange:e=>setSettings({...settings,linkedinCookie:e.target.value}),placeholder:"Paste li_at value from DevTools",style:inputStyle})
+          ),
+          React.createElement("div", {style:{marginBottom:12}},
+            React.createElement("label", {style:labelStyle}, "Indeed Session"),
+            React.createElement("input", {type:"text",value:settings.indeedCookie||"",onChange:e=>setSettings({...settings,indeedCookie:e.target.value}),placeholder:"Paste Indeed session value",style:inputStyle})
+          ),
+          React.createElement("div", {style:{marginBottom:12}},
+            React.createElement("label", {style:labelStyle}, "Phone Number"),
+            React.createElement("input", {type:"text",value:settings.phone||"",onChange:e=>setSettings({...settings,phone:e.target.value}),placeholder:"+1-555-123-4567",style:inputStyle})
+          ),
+          React.createElement("div", {style:{marginBottom:16}},
+            React.createElement("label", {style:labelStyle}, "Max Applications Per Day"),
+            React.createElement("input", {type:"number",value:settings.maxPerDay||20,onChange:e=>setSettings({...settings,maxPerDay:parseInt(e.target.value)||20}),min:1,max:100,style:{...inputStyle,width:80}})
+          ),
+          React.createElement("div", {style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+            React.createElement("button", {onClick:onClose,style:{padding:"6px 16px",borderRadius:4,border:"1px solid "+C.bdr,background:"transparent",color:C.txt,fontSize:11,cursor:"pointer",fontFamily:"monospace"}}, "Cancel"),
+            React.createElement("button", {onClick:handleSave,style:{padding:"6px 16px",borderRadius:4,border:"none",background:saved?"#059669":"#10b981",color:"#fff",fontSize:11,cursor:"pointer",fontFamily:"monospace"}}, saved?"\u2713 Saved!":"Save Settings")
+          ),
+          React.createElement("div", {style:{marginTop:12,padding:8,borderRadius:4,background:C.bg,border:"1px solid "+C.bdr}},
+            React.createElement("p", {style:{margin:0,fontSize:9,color:C.dim,fontFamily:"monospace"}}, "\ud83d\udca1 To get your LinkedIn li_at: Open Chrome DevTools \u2192 Application \u2192 Cookies \u2192 linkedin.com \u2192 copy li_at value")
           )
         )
       );
-    }
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
-</script>
+    }</script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});</script>
 </body>
 </html>
