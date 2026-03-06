@@ -35,7 +35,7 @@
   ::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
 </style>
 <script>
-// Polyfill window.storage â localStorage
+// Polyfill window.storage → localStorage
 window.storage = {
   async get(key) {
     const v = localStorage.getItem(key);
@@ -64,11 +64,11 @@ if (!localStorage.getItem("jh:profile")) {
 <body>
 <div id="root"></div>
 <script type="text/babel" data-type="module">
-// âââ Pull from globals âââ
+// ─── Pull from globals ───
 const { useState, useEffect, useRef, useCallback } = React;
 const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } = Recharts;
 
-// âââ CONSTANTS âââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── CONSTANTS ───────────────────────────────────────────────
 const APIFY_TOKEN = localStorage.getItem("APIFY_TOKEN") || ["apify_","api_gQwRxuBoSJuO6ci1bI","68ebP82Q6Mee0u6h0j"].join("");
 const CLAUDE_KEY = localStorage.getItem("CLAUDE_KEY") || ["sk-ant-api03-GqQfhYR_6dzZ-6Gth","gAGkijYx2KePQjlrsu3joreT3KTwmQoLB1afhdTj","C2hMP8YuN3za6UAO103ktjplXAvcA-p5HeDgAA"].join("");
 const WAHA_NUM = localStorage.getItem("WAHA_NUM") || "";
@@ -82,13 +82,13 @@ const STORE_KEYS = {
   followups: "jh:followups", preps: "jh:preps",
 };
 const STEPS = [
-  { id:"scrape", label:"Scrape", icon:"ð·ï¸", d:"JobSpy â 5 boards" },
-  { id:"ghost",  label:"Ghost Filter", icon:"ð»", d:"Apify + Claude NLP" },
-  { id:"ats",    label:"ATS Score", icon:"ð¯", d:"Score + Gap + Rewrite" },
-  { id:"tailor", label:"Tailor", icon:"âï¸", d:"Cover letter + resume diff" },
-  { id:"salary", label:"Salary", icon:"ð°", d:"Glassdoor + Claude est." },
-  { id:"apply",  label:"Apply", icon:"ð", d:"Queue submissions" },
-  { id:"track",  label:"Track", icon:"ð", d:"Follow-ups via WAHA" },
+  { id:"scrape", label:"Scrape", icon:"🕷️", d:"JobSpy — 5 boards" },
+  { id:"ghost",  label:"Ghost Filter", icon:"👻", d:"Apify + Claude NLP" },
+  { id:"ats",    label:"ATS Score", icon:"🎯", d:"Score + Gap + Rewrite" },
+  { id:"tailor", label:"Tailor", icon:"✂️", d:"Cover letter + resume diff" },
+  { id:"salary", label:"Salary", icon:"💰", d:"Glassdoor + Claude est." },
+  { id:"apply",  label:"Apply", icon:"🚀", d:"Queue submissions" },
+  { id:"track",  label:"Track", icon:"📊", d:"Follow-ups via WAHA" },
 ];
 const STAT_COLORS = {
   applied:"#00e5a0", interview:"#5b8cff", rejected:"#ff6b6b",
@@ -114,7 +114,7 @@ const LIGHT = {
   txt:"#1a1d2e", mut:"#6b7094",
 };
 
-// âââ STORAGE âââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── STORAGE ─────────────────────────────────────────────────
 async function load(key) {
   try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : null; }
   catch(e) { return null; }
@@ -124,7 +124,7 @@ async function save(key, data) {
   catch(e) { return false; }
 }
 
-// âââ CLAUDE ââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ─── CLAUDE ──────────────────────────────────────────────────
 async function claude(prompt, sys = "", maxTok = 1500) {
   try {
     const b = { model:"claude-sonnet-4-20250514", max_tokens:maxTok, messages:[{role:"user",content:prompt}] };
@@ -137,7 +137,7 @@ async function claude(prompt, sys = "", maxTok = 1500) {
   } catch(e) { console.warn("Claude API error:", e); return null; }
 }
 
-// âââ APIFY HELPERS âââââââââââââââââââââââââââââââââââââââââââ
+// ─── APIFY HELPERS ───────────────────────────────────────────
 async function runApifyActor(actorId, input) {
   const startUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_TOKEN}`;
   const startRes = await fetch(startUrl, {
@@ -207,7 +207,7 @@ function demoJobs(title, loc) {
   return Array.from({length:12},(_,i) => ({
     id:"demo-" + Date.now() + "-" + i, title:[title,"Senior " + title, title + " Lead","Head of " + title.split(" ")[0]][i%4],
     company:cos[i%cos.length], location:[loc,"Remote","Austin, TX","Dallas, TX","SF, CA","NYC"][i%6],
-    salary:"$" + (75+i*7) + "kâ$" + (105+i*10) + "k", salaryMin:(75+i*7)*1000, salaryMax:(105+i*10)*1000,
+    salary:"$" + (75+i*7) + "k–$" + (105+i*10) + "k", salaryMin:(75+i*7)*1000, salaryMax:(105+i*10)*1000,
     postedAgo:[8,15,23,35,48,62,80,95,110,140][i%10] + "m ago",
     url:"https://linkedin.com/jobs/view/" + (3000000+i),
     description:"Looking for " + title + " with strong background in marketing, growth, and data-driven decision making. Join our team to drive customer acquisition and retention strategies.",
@@ -227,9 +227,9 @@ async function sendWhatsApp(text) {
   } catch(e) { return false; }
 }
 
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââ APP âââââââââââââââââââââââââââââââââââââââââââââââââââââ
-// âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ═══════════════════════════════════════════════════════════════
+// ─── APP ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
 function App() {
   const [ready, setReady] = useState(false);
   const [view, setView] = useState("hunt");
@@ -293,7 +293,7 @@ function App() {
   useEffect(() => { logRef.current && (logRef.current.scrollTop = logRef.current.scrollHeight); }, [logs]);
   const wait = ms => new Promise(r => setTimeout(r, ms));
 
-  // âââ PIPELINE ââââââââââââââââââââââââââââââââââââââââââ
+  // ─── PIPELINE ──────────────────────────────────────────
   const run = async () => {
     if (running || !search.title) return;
     setRunning(true); setView("pipeline"); setLogs([]); setJobs([]); setCurStep(0);
@@ -305,10 +305,10 @@ function App() {
       scraped = await scrapeJobSpy(search.title, profile.location, { remote: search.remote, expLevel: search.expLevel });
       const srcCounts = {};
       scraped.forEach(j => { srcCounts[j.source] = (srcCounts[j.source]||0) + 1; });
-      Object.entries(srcCounts).forEach(([src, cnt]) => { log("SCRAPE","success",src + ": " + cnt + " jobs â"); });
+      Object.entries(srcCounts).forEach(([src, cnt]) => { log("SCRAPE","success",src + ": " + cnt + " jobs ✅"); });
       log("SCRAPE","success","Total: " + scraped.length + " jobs from " + Object.keys(srcCounts).length + " sources");
     } catch (e) {
-      log("SCRAPE","warn","JobSpy failed: " + e.message + " â using demo data");
+      log("SCRAPE","warn","JobSpy failed: " + e.message + " — using demo data");
       scraped = demoJobs(search.title, profile.location);
     }
 
@@ -324,7 +324,7 @@ function App() {
     }
     const suspicious = scraped.filter(j => !j.isGhost && j.description).slice(0, 10);
     if (suspicious.length > 0) {
-      const ghostPrompt = "Analyze these job listings for ghost job indicators (vague requirements, no specific team/manager, unrealistic salary, suspiciously broad scope). Return JSON array of booleans [true/false] â true means likely ghost.\n" + suspicious.map((j,i) => i + ". " + j.title + " @ " + j.company + ": \"" + j.description.slice(0,120) + "\"").join("\n") + "\nReturn ONLY a JSON array like [false,true,false,...]. No text.";
+      const ghostPrompt = "Analyze these job listings for ghost job indicators (vague requirements, no specific team/manager, unrealistic salary, suspiciously broad scope). Return JSON array of booleans [true/false] — true means likely ghost.\n" + suspicious.map((j,i) => i + ". " + j.title + " @ " + j.company + ": \"" + j.description.slice(0,120) + "\"").join("\n") + "\nReturn ONLY a JSON array like [false,true,false,...]. No text.";
       const ghostRes = await claude(ghostPrompt);
       if (ghostRes) {
         try {
@@ -333,7 +333,7 @@ function App() {
             if (isGhost && suspicious[i]) { suspicious[i].isGhost = true; suspicious[i].ghostReason = "Claude NLP: suspicious listing"; ghostCount++; }
           });
           log("GHOST","info","Claude NLP: " + flags.filter(Boolean).length + " additional ghosts flagged");
-        } catch(e) { log("GHOST","warn","Claude NLP parse error â using heuristics only"); }
+        } catch(e) { log("GHOST","warn","Claude NLP parse error — using heuristics only"); }
       }
     }
     scraped = scraped.filter(j => !j.isGhost);
@@ -354,7 +354,7 @@ function App() {
 
     setCurStep(2); await wait(300);
     log("ATS","info","Claude scoring " + scraped.length + " jobs (score + keyword gap + rewrite)...");
-    const atsPrompt = "You are an ATS scoring engine. For each job, return: score (0-100), gap (array of missing keywords), and rewrite (array of improved resume bullet suggestions).\n\nCandidate: " + profile.coreSkills + ". " + (profile.yearsExp || "several") + " yrs exp. Target: " + search.title + ".\nResume excerpt: " + (profile.resumeText?.slice(0,400) || "") + "\nDeal-breakers: " + (profile.dealBreakers || "none") + "\n\nJobs:\n" + scraped.slice(0,15).map((j,i) => i + ". " + j.title + " at " + j.company + " â " + (j.description?.slice(0,100) || "")).join("\n") + "\n\nReturn ONLY valid JSON array:\n[{\"score\":85,\"gap\":[\"SEO\",\"HubSpot\"],\"rewrite\":[\"Led SEO campaigns â Drove 42% organic growth via SEO strategy\"]},...]";
+    const atsPrompt = "You are an ATS scoring engine. For each job, return: score (0-100), gap (array of missing keywords), and rewrite (array of improved resume bullet suggestions).\n\nCandidate: " + profile.coreSkills + ". " + (profile.yearsExp || "several") + " yrs exp. Target: " + search.title + ".\nResume excerpt: " + (profile.resumeText?.slice(0,400) || "") + "\nDeal-breakers: " + (profile.dealBreakers || "none") + "\n\nJobs:\n" + scraped.slice(0,15).map((j,i) => i + ". " + j.title + " at " + j.company + " — " + (j.description?.slice(0,100) || "")).join("\n") + "\n\nReturn ONLY valid JSON array:\n[{\"score\":85,\"gap\":[\"SEO\",\"HubSpot\"],\"rewrite\":[\"Led SEO campaigns → Drove 42% organic growth via SEO strategy\"]},...]";
     const atsRes = await claude(atsPrompt, "", 2000);
     if (atsRes) {
       try {
@@ -369,11 +369,11 @@ function App() {
         log("ATS","success","Best: " + Math.max(...scraped.map(j=>j.atsScore)) + "% | Avg: " + avg + "%");
       } catch(e) {
         scraped = scraped.map(j => ({...j, atsScore: Math.floor(Math.random()*25)+65, atsGap:["N/A"], resumeDiff:[]}));
-        log("ATS","warn","Parse error â heuristic scores applied");
+        log("ATS","warn","Parse error — heuristic scores applied");
       }
     } else {
       scraped = scraped.map(j => ({...j, atsScore: Math.floor(Math.random()*25)+65, atsGap:[], resumeDiff:[]}));
-      log("ATS","warn","Claude unavailable â heuristics applied");
+      log("ATS","warn","Claude unavailable — heuristics applied");
     }
     scraped.sort((a,b) => b.atsScore - a.atsScore);
 
@@ -384,7 +384,7 @@ function App() {
       const cp = "Write a compelling 3-sentence cover letter opening.\nCandidate: " + profile.fullName + "\nSkills: " + profile.coreSkills + "\nBackground: " + (profile.resumeText?.slice(0,250) || "") + "\nApplying for: " + top[i].title + " at " + top[i].company + " (" + top[i].location + ")\nJob snippet: " + (top[i].description?.slice(0,150) || "") + "\nATS Keywords to weave in: " + (top[i].atsGap?.join(", ") || "none") + "\nReturn ONLY the 3 sentences.";
       const cover = await claude(cp);
       top[i].coverLetter = cover || fallbackCover(top[i], profile);
-      log("TAILOR","success","â " + top[i].company);
+      log("TAILOR","success","✓ " + top[i].company);
     }
     for (let i = 4; i < top.length; i++) top[i].coverLetter = fallbackCover(top[i], profile);
     log("TAILOR","success",top.length + " applications tailored");
@@ -398,7 +398,7 @@ function App() {
         const salaries = JSON.parse(salRes.replace(/```json|```/g,"").trim());
         top.forEach((j,i) => {
           if (salaries[i]) {
-            j.salaryIntel = { min: salaries[i].min, max: salaries[i].max, source: j.salaryMin ? "listed" : (salaries[i].source || "Claude estimate"), display: "$" + Math.round((salaries[i].min||0)/1000) + "kâ$" + Math.round((salaries[i].max||0)/1000) + "k" };
+            j.salaryIntel = { min: salaries[i].min, max: salaries[i].max, source: j.salaryMin ? "listed" : (salaries[i].source || "Claude estimate"), display: "$" + Math.round((salaries[i].min||0)/1000) + "k–$" + Math.round((salaries[i].max||0)/1000) + "k" };
           }
         });
         log("SALARY","success",top.filter(j => j.salaryIntel).length + " salary estimates ready");
@@ -410,7 +410,7 @@ function App() {
     log("APPLY","info",applied.length + " applications queued");
     const withUrls = applied.filter(j => j.applyUrl && j.applyUrl.startsWith("http"));
     if (withUrls.length > 0) log("APPLY","success",withUrls.length + " have direct apply links");
-    log("APPLY","success",applied.length + " applications processed â");
+    log("APPLY","success",applied.length + " applications processed ✅");
 
     setCurStep(6); await wait(300);
     log("TRACK","success","Pipeline complete! " + applied.length + " jobs ready.");
@@ -427,7 +427,7 @@ function App() {
   };
 
   function fallbackCover(job, prof) {
-    return "Dear " + job.company + " Hiring Team â I'm " + prof.fullName + ", and I'm excited about the " + job.title + " opportunity. With " + (prof.yearsExp || "several") + " years of experience in " + (prof.coreSkills?.split(",")[0]?.trim() || "my field") + ", I'm confident I can contribute meaningfully from day one. I'd welcome the chance to discuss how my background aligns with your team's goals.";
+    return "Dear " + job.company + " Hiring Team — I'm " + prof.fullName + ", and I'm excited about the " + job.title + " opportunity. With " + (prof.yearsExp || "several") + " years of experience in " + (prof.coreSkills?.split(",")[0]?.trim() || "my field") + ", I'm confident I can contribute meaningfully from day one. I'd welcome the chance to discuss how my background aligns with your team's goals.";
   }
 
   const updateStatus = async (id, s) => {
@@ -479,7 +479,7 @@ function App() {
   const approveAndSendFollowUp = async () => {
     if (!followUpModal) return;
     setFollowUpModal(prev => ({...prev, status: "sending"}));
-    const text = "ð Follow-up Draft for " + followUpModal.title + " @ " + followUpModal.company + ":\n\n" + followUpModal.draft + "\n\nâ Forward this to the recruiter/hiring manager";
+    const text = "📝 Follow-up Draft for " + followUpModal.title + " @ " + followUpModal.company + ":\n\n" + followUpModal.draft + "\n\n— Forward this to the recruiter/hiring manager";
     const sent = await sendWhatsApp(text);
     const updated = followUps.map(fu => fu.jobId === followUpModal.jobId ? {...fu, draft: followUpModal.draft, status: sent ? "sent" : "failed"} : fu);
     setFollowUps(updated); await sf(updated);
@@ -504,18 +504,18 @@ function App() {
     } else {
       // Fallback mock data when Claude API is unavailable
       setPrepData({ jobId: job.id, company: job.company, title: job.title,
-        brief: { company: job.company, mission: "Empowering teams through innovative solutions", recent: "Series B funding, expanding globally", glassdoor: "4.2/5 â great culture, fast-paced", culture: "Remote-first, async communication, high ownership", hiringManager: "Unknown" },
+        brief: { company: job.company, mission: "Empowering teams through innovative solutions", recent: "Series B funding, expanding globally", glassdoor: "4.2/5 — great culture, fast-paced", culture: "Remote-first, async communication, high ownership", hiringManager: "Unknown" },
         questions: [
-          {q:"Tell me about yourself and your background in " + (job.title||"this role") + ".",hint:"2-min elevator pitch â current role â why this move"},
+          {q:"Tell me about yourself and your background in " + (job.title||"this role") + ".",hint:"2-min elevator pitch → current role → why this move"},
           {q:"Why " + job.company + "? What excites you about our mission?",hint:"Reference their product, values, or recent news"},
-          {q:"Walk me through a campaign or project where you drove measurable growth.",hint:"Use STAR: Situation â Task â Action â Result with numbers"},
-          {q:"How do you prioritize when you have competing deadlines?",hint:"Framework-based answer: impact Ã effort matrix, stakeholder alignment"},
+          {q:"Walk me through a campaign or project where you drove measurable growth.",hint:"Use STAR: Situation → Task → Action → Result with numbers"},
+          {q:"How do you prioritize when you have competing deadlines?",hint:"Framework-based answer: impact × effort matrix, stakeholder alignment"},
           {q:"Tell me about a time you failed. What did you learn?",hint:"Be genuine. Show self-awareness and growth mindset"},
           {q:"How do you measure success in your role?",hint:"Tie to KPIs, pipeline metrics, revenue impact"},
           {q:"Describe your experience with [key skill from JD].",hint:"Specific examples with quantified outcomes"},
           {q:"How do you collaborate cross-functionally?",hint:"Give examples of working with sales, product, or engineering"},
           {q:"Where do you see yourself in 2-3 years?",hint:"Show ambition aligned with company growth trajectory"},
-          {q:"Do you have any questions for us?",hint:"Ask about team, success metrics, growth plans â never salary first"}
+          {q:"Do you have any questions for us?",hint:"Ask about team, success metrics, growth plans — never salary first"}
         ],
         cheatSheet: { strengths: (profile.coreSkills||"versatile,data-driven,strategic").split(",").map(s=>s.trim()), keywords: ["growth","pipeline","attribution","CAC","LTV","retention","funnel"], questionsToAsk: ["What does success look like in the first 90 days?","What's the current team structure and how will it evolve?","What are the biggest challenges the team faces right now?"], salaryRange: job.salaryIntel?.display || "$120k - $180k (estimated)" }
       });
@@ -550,7 +550,7 @@ function App() {
 
   const displayJobs = tab==="all" ? allJobs : allJobs.filter(j=>j.status===tab);
 
-  if (!ready) return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",color:C.acc,fontFamily:"monospace"}}>Loadingâ¦</div>;
+  if (!ready) return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",color:C.acc,fontFamily:"monospace"}}>Loading…</div>;
 
   const input = { background:C.bg, border:"1px solid " + C.bdr, borderRadius:8, padding:"5px 13px", color:C.txt, fontFamily:"'Syne',sans-serif", fontSize:11, outline:"none", width:"100%" };
   const navItems = ["hunt","pipeline","jobs","kanban","dash","prep"];
@@ -565,10 +565,10 @@ function App() {
         {/* NAV */}
         <nav style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5,paddingBottom:14,borderBottom:"1px solid " + C.bdr }}>
           <div style={{ display:"flex",alignItems:"center",gap:5 }}>
-            <div style={{ width:34,height:34,borderRadius:8,background:"linear-gradient(135deg," + C.acc + "," + C.acc2 + ")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11 }}>â¡</div>
+            <div style={{ width:34,height:34,borderRadius:8,background:"linear-gradient(135deg," + C.acc + "," + C.acc2 + ")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11 }}>⚡</div>
             <div>
               <div style={{ fontSize:11,fontWeight:800,letterSpacing:-0.5 }}>JobHunter<span style={{color:C.acc}}>AI</span> <span style={{fontSize:9,color:C.mut}}>v2</span></div>
-              <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut }}>{profile.fullName||"Setup required"} Â· All Jobs Live Â· run #{stats.runs}</div>
+              <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut }}>{profile.fullName||"Setup required"} · All Jobs Live · run #{stats.runs}</div>
             </div>
           </div>
           <div style={{ display:"flex",gap:3,alignItems:"center",flexWrap:"wrap" }}>
@@ -581,8 +581,8 @@ function App() {
                 opacity:v==="prep"&&!prepData?0.4:1,
               }}>{v}</button>
             ))}
-            <button onClick={toggleTheme} style={{ background:"transparent",border:"1px solid " + C.bdr,borderRadius:6,padding:"2px 4px",fontSize:11,cursor:"pointer",color:C.mut }}>{darkMode?"âï¸":"ð"}</button>
-            <button onClick={()=>setShowEdit(!showEdit)} style={{ background:"transparent",border:"1px solid " + C.bdr,borderRadius:6,padding:"2px 4px",fontSize:11,cursor:"pointer",color:C.mut }}>âï¸</button>
+            <button onClick={toggleTheme} style={{ background:"transparent",border:"1px solid " + C.bdr,borderRadius:6,padding:"2px 4px",fontSize:11,cursor:"pointer",color:C.mut }}>{darkMode?"☀️":"🌙"}</button>
+            <button onClick={()=>setShowEdit(!showEdit)} style={{ background:"transparent",border:"1px solid " + C.bdr,borderRadius:6,padding:"2px 4px",fontSize:11,cursor:"pointer",color:C.mut }}>⚙️</button>
           </div>
         </nav>
 
@@ -590,11 +590,11 @@ function App() {
         {view==="onboard" && (
           <div style={{ maxWidth:540,margin:"0 auto",animation:"fi .3s" }}>
             <div style={{ textAlign:"center",marginBottom:14 }}>
-              <div style={{ fontSize:24,marginBottom:5 }}>ð¯</div>
+              <div style={{ fontSize:24,marginBottom:5 }}>🎯</div>
               <h1 style={{ fontSize:11,fontWeight:800,letterSpacing:-1.5,marginBottom:6 }}>One-Time Setup</h1>
               <p style={{ color:C.mut,fontSize:11,lineHeight:1.5 }}>Saved permanently. Agent uses this for every run.</p>
             </div>
-            <Card c={C} label="ð¤ IDENTITY">
+            <Card c={C} label="👤 IDENTITY">
               <Grid>
                 <F c={C} l="FULL NAME" v={profile.fullName} p="Your Name" o={v=>setProfile({...profile,fullName:v})} s={input} />
                 <F c={C} l="EMAIL" v={profile.email} p="you@email.com" o={v=>setProfile({...profile,email:v})} s={input} />
@@ -603,17 +603,17 @@ function App() {
                 <F c={C} l="LINKEDIN URL" v={profile.linkedinUrl} p="linkedin.com/in/you" o={v=>setProfile({...profile,linkedinUrl:v})} s={input} full />
               </Grid>
             </Card>
-            <Card c={C} label="ð RESUME (paste full text)">
+            <Card c={C} label="📄 RESUME (paste full text)">
               <textarea value={profile.resumeText} onChange={e=>setProfile({...profile,resumeText:e.target.value})} placeholder="Paste your entire resume here..." style={{ ...input,minHeight:130,resize:"vertical" }} />
             </Card>
-            <Card c={C} label="ð ï¸ SKILLS & EXPERIENCE">
+            <Card c={C} label="🛠️ SKILLS & EXPERIENCE">
               <Grid>
                 <F c={C} l="CORE SKILLS (comma sep)" v={profile.coreSkills} p="AI automation, n8n, marketing" o={v=>setProfile({...profile,coreSkills:v})} s={input} full />
                 <F c={C} l="YEARS EXPERIENCE" v={profile.yearsExp} p="10" o={v=>setProfile({...profile,yearsExp:v})} s={input} />
                 <F c={C} l="EDUCATION / CERTS" v={profile.education} p="MCITP, BS Business" o={v=>setProfile({...profile,education:v})} s={input} />
               </Grid>
             </Card>
-            <Card c={C} label="ð° SALARY & DEAL-BREAKERS">
+            <Card c={C} label="💰 SALARY & DEAL-BREAKERS">
               <Grid>
                 <F c={C} l="MIN SALARY ($K)" v={profile.salaryMin} p="80" o={v=>setProfile({...profile,salaryMin:v})} s={input} />
                 <F c={C} l="TARGET ($K)" v={profile.salaryMax} p="130" o={v=>setProfile({...profile,salaryMax:v})} s={input} />
@@ -628,7 +628,7 @@ function App() {
                 background:profile.fullName&&profile.resumeText?"linear-gradient(135deg," + C.acc + "," + (darkMode?"#00c88a":"#009963") + ")":C.bdr,
                 color:profile.fullName&&profile.resumeText?(darkMode?"#05060a":"#ffffff"):C.mut,
                 cursor:profile.fullName&&profile.resumeText?"pointer":"not-allowed",
-              }}>â Save & Start Hunting</button>
+              }}>✅ Save & Start Hunting</button>
           </div>
         )}
 
@@ -636,8 +636,8 @@ function App() {
         {showEdit && view!=="onboard" && (
           <div style={{ background:C.card,border:"1px solid rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.15)",borderRadius:7,padding:5,marginBottom:8,animation:"fi .2s" }}>
             <div style={{ display:"flex",justifyContent:"space-between",marginBottom:6 }}>
-              <Lbl c={C}>âï¸ EDIT PROFILE</Lbl>
-              <button onClick={()=>setShowEdit(false)} style={{ background:"none",border:"none",color:C.mut,cursor:"pointer",fontSize:11 }}>â</button>
+              <Lbl c={C}>⚙️ EDIT PROFILE</Lbl>
+              <button onClick={()=>setShowEdit(false)} style={{ background:"none",border:"none",color:C.mut,cursor:"pointer",fontSize:11 }}>✕</button>
             </div>
             <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4,marginBottom:5 }}>
               <F c={C} l="NAME" v={profile.fullName} o={v=>sp({...profile,fullName:v})} s={input} />
@@ -648,7 +648,7 @@ function App() {
               <F c={C} l="MAX ($K)" v={profile.salaryMax} o={v=>sp({...profile,salaryMax:v})} s={input} />
             </div>
             <div style={{ borderTop:"1px solid " + C.bdr,marginTop:6,paddingTop:14 }}>
-              <Lbl c={C}>ð API KEYS</Lbl>
+              <Lbl c={C}>🔑 API KEYS</Lbl>
               <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:5 }}>
                 <div>
                   <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut,marginBottom:4,textTransform:"uppercase",letterSpacing:1 }}>Apify Token</div>
@@ -666,8 +666,8 @@ function App() {
               <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut,marginBottom:5 }}>Keys are stored locally on your device. Reload after saving.</div>
             </div>
             <div style={{ display:"flex",gap:6 }}>
-              <button onClick={()=>setShowEdit(false)} style={{ flex:1,padding:4,borderRadius:7,border:"1px solid rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.2)",background:"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.05)",color:C.acc,fontFamily:"monospace",fontSize:10,cursor:"pointer",fontWeight:600 }}>â Done</button>
-              <button onClick={resetAll} style={{ padding:4,borderRadius:7,border:"1px solid rgba(255,107,107,0.2)",background:"rgba(255,107,107,0.05)",color:C.err,fontFamily:"monospace",fontSize:10,cursor:"pointer" }}>ðï¸ Reset</button>
+              <button onClick={()=>setShowEdit(false)} style={{ flex:1,padding:4,borderRadius:7,border:"1px solid rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.2)",background:"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.05)",color:C.acc,fontFamily:"monospace",fontSize:10,cursor:"pointer",fontWeight:600 }}>✅ Done</button>
+              <button onClick={resetAll} style={{ padding:4,borderRadius:7,border:"1px solid rgba(255,107,107,0.2)",background:"rgba(255,107,107,0.05)",color:C.err,fontFamily:"monospace",fontSize:10,cursor:"pointer" }}>🗑️ Reset</button>
             </div>
           </div>
         )}
@@ -686,7 +686,7 @@ function App() {
                 </div>
               ))}
             </div>
-            <Card c={C} label="ð NEW HUNT">
+            <Card c={C} label="🔍 NEW HUNT">
               <Grid>
                 <F c={C} l="JOB TITLE" v={search.title} p="Growth Marketing Manager" o={v=>setSearch({...search,title:v})} s={input} full />
                 <div>
@@ -704,7 +704,7 @@ function App() {
                 <F c={C} l="SALARY FLOOR ($K)" v={search.salaryFloor} p="80" o={v=>setSearch({...search,salaryFloor:v})} s={input} />
               </Grid>
             </Card>
-            <Card c={C} label="ð PIPELINE PREVIEW">
+            <Card c={C} label="🔄 PIPELINE PREVIEW">
               <div style={{ display:"flex",gap:6,overflowX:"auto",paddingBottom:8 }}>
                 {STEPS.map((s,i)=>(
                   <div key={s.id} style={{ flex:"1 0 100px",background:C.bg,border:"1px solid " + C.bdr,borderRadius:8,padding:5,textAlign:"center",minWidth:90 }}>
@@ -722,7 +722,7 @@ function App() {
                 background:!running&&search.title?"linear-gradient(135deg," + C.acc + "," + (darkMode?"#00c88a":"#009963") + ")":C.bdr,
                 color:!running&&search.title?(darkMode?"#05060a":"#ffffff"):C.mut,
                 cursor:!running&&search.title?"pointer":"not-allowed",marginTop:8,
-              }}>ð Launch Pipeline</button>
+              }}>🚀 Launch Pipeline</button>
           </div>
         )}
 
@@ -734,7 +734,7 @@ function App() {
                 <div key={s.id} style={{ flex:1,textAlign:"center",padding:"8px 4px",borderRadius:8,
                   background:i===curStep?"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.08)":i<curStep?C.card:"transparent",
                   border:"1px solid " + (i===curStep?C.acc:i<curStep?C.bdr:"transparent") }}>
-                  <div style={{ fontSize:11 }}>{i<curStep?"â":i===curStep?"â³":s.icon}</div>
+                  <div style={{ fontSize:11 }}>{i<curStep?"✅":i===curStep?"⏳":s.icon}</div>
                   <div style={{ fontFamily:"monospace",fontSize:7,color:i<=curStep?C.txt:C.mut,fontWeight:i===curStep?700:400 }}>{s.label}</div>
                 </div>
               ))}
@@ -747,12 +747,12 @@ function App() {
                   <span style={{ color:C.txt }}>{l.msg}</span>
                 </div>
               ))}
-              {running && <div style={{ color:C.acc,animation:"blink 1s infinite" }}>â</div>}
+              {running && <div style={{ color:C.acc,animation:"blink 1s infinite" }}>▌</div>}
             </div>
             {!running && jobs.length>0 && (
               <div style={{ display:"flex",gap:4,marginTop:16 }}>
-                <button onClick={()=>setView("jobs")} style={{ flex:1,padding:12,borderRadius:8,border:"none",background:"linear-gradient(135deg," + C.acc + "," + C.acc2 + ")",color:darkMode?"#05060a":"#fff",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>ð View Results ({jobs.length} jobs)</button>
-                <button onClick={()=>setView("kanban")} style={{ flex:1,padding:12,borderRadius:8,border:"1px solid " + C.bdr,background:"transparent",color:C.acc2,fontWeight:600,fontSize:11,cursor:"pointer",fontFamily:"monospace" }}>ð Kanban Board</button>
+                <button onClick={()=>setView("jobs")} style={{ flex:1,padding:12,borderRadius:8,border:"none",background:"linear-gradient(135deg," + C.acc + "," + C.acc2 + ")",color:darkMode?"#05060a":"#fff",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>📋 View Results ({jobs.length} jobs)</button>
+                <button onClick={()=>setView("kanban")} style={{ flex:1,padding:12,borderRadius:8,border:"1px solid " + C.bdr,background:"transparent",color:C.acc2,fontWeight:600,fontSize:11,cursor:"pointer",fontFamily:"monospace" }}>📊 Kanban Board</button>
               </div>
             )}
           </div>
@@ -779,7 +779,7 @@ function App() {
                   <div style={{ display:"flex",justifyContent:"space-between",alignItems:"start" }}>
                     <div>
                       <div style={{ fontSize:11,fontWeight:700,marginBottom:2 }}>{j.title}</div>
-                      <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut }}>{j.company} Â· {j.location}</div>
+                      <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut }}>{j.company} · {j.location}</div>
                     </div>
                     <div style={{ textAlign:"right" }}>
                       <div style={{ fontSize:11,fontWeight:800,color:j.atsScore>=80?C.acc:j.atsScore>=60?C.warn:C.err }}>{j.atsScore}%</div>
@@ -797,7 +797,7 @@ function App() {
                     <div style={{ marginTop:12,borderTop:"1px solid " + C.bdr,paddingTop:12 }} onClick={e=>e.stopPropagation()}>
                       {j.atsGap?.length>0 && (
                         <div style={{ marginBottom:8 }}>
-                          <Lbl c={C}>ð¯ KEYWORD GAP</Lbl>
+                          <Lbl c={C}>🎯 KEYWORD GAP</Lbl>
                           <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}>
                             {j.atsGap.map((kw,i)=><span key={i} style={{ padding:"2px 6px",borderRadius:4,background:"rgba(255,107,107,0.08)",fontFamily:"monospace",fontSize:8,color:C.err }}>{kw}</span>)}
                           </div>
@@ -805,25 +805,25 @@ function App() {
                       )}
                       {j.resumeDiff?.length>0 && (
                         <div style={{ marginBottom:8 }}>
-                          <Lbl c={C}>âï¸ RESUME REWRITES</Lbl>
+                          <Lbl c={C}>✏️ RESUME REWRITES</Lbl>
                           {j.resumeDiff.map((d,i)=><div key={i} style={{ fontFamily:"monospace",fontSize:9,color:C.txt,padding:4,background:C.bg,borderRadius:4,marginBottom:2 }}>{d}</div>)}
                         </div>
                       )}
                       {j.coverLetter && (
                         <div style={{ marginBottom:8 }}>
-                          <Lbl c={C}>ð COVER LETTER</Lbl>
+                          <Lbl c={C}>📝 COVER LETTER</Lbl>
                           <div style={{ fontFamily:"monospace",fontSize:9,color:C.txt,padding:4,background:C.bg,borderRadius:6,lineHeight:1.6 }}>{j.coverLetter}</div>
                         </div>
                       )}
                       {j.salaryIntel && (
                         <div style={{ marginBottom:8 }}>
-                          <Lbl c={C}>ð° SALARY INTEL</Lbl>
+                          <Lbl c={C}>💰 SALARY INTEL</Lbl>
                           <div style={{ fontFamily:"monospace",fontSize:9,color:C.acc }}>{j.salaryIntel.display} ({j.salaryIntel.source})</div>
                         </div>
                       )}
                       {/* Contact Tracker */}
                       <div style={{ marginBottom:8 }}>
-                        <Lbl c={C}>ð¥ CONTACTS</Lbl>
+                        <Lbl c={C}>👥 CONTACTS</Lbl>
                         {(contacts[j.id]||[]).map((ct,i) => (
                           <div key={i} style={{ display:"flex",gap:4,marginBottom:3 }}>
                             <input value={ct.name||""} onChange={e=>updateContact(j.id,i,"name",e.target.value)} placeholder="Name" style={{...input,fontSize:9,padding:4,flex:1}} />
@@ -841,15 +841,15 @@ function App() {
                             border:"1px solid " + (STAT_COLORS[s]||C.mut) + "40",color:STAT_COLORS[s]||C.mut,
                           }}>{s}</button>
                         ))}
-                        {j.url && <a href={j.url} target="_blank" rel="noopener" style={{ padding:"3px 8px",borderRadius:4,fontFamily:"monospace",fontSize:8,color:C.acc2,border:"1px solid " + C.acc2 + "40",textDecoration:"none" }}>ð Open</a>}
-                        <button onClick={()=>{generatePrepKit(j);setView("prep");}} style={{ padding:"3px 8px",borderRadius:4,fontFamily:"monospace",fontSize:8,color:C.warn,border:"1px solid " + C.warn + "40",background:"transparent",cursor:"pointer" }}>ð Prep</button>
+                        {j.url && <a href={j.url} target="_blank" rel="noopener" style={{ padding:"3px 8px",borderRadius:4,fontFamily:"monospace",fontSize:8,color:C.acc2,border:"1px solid " + C.acc2 + "40",textDecoration:"none" }}>🔗 Open</a>}
+                        <button onClick={()=>{generatePrepKit(j);setView("prep");}} style={{ padding:"3px 8px",borderRadius:4,fontFamily:"monospace",fontSize:8,color:C.warn,border:"1px solid " + C.warn + "40",background:"transparent",cursor:"pointer" }}>📚 Prep</button>
                       </div>
                     </div>
                   )}
                 </div>
               ))}
             </div>
-            {displayJobs.length===0 && <div style={{ textAlign:"center",padding:40,fontFamily:"monospace",fontSize:10,color:C.mut }}>No jobs yet â run a pipeline from Hunt tab</div>}
+            {displayJobs.length===0 && <div style={{ textAlign:"center",padding:40,fontFamily:"monospace",fontSize:10,color:C.mut }}>No jobs yet — run a pipeline from Hunt tab</div>}
           </div>
         )}
 
@@ -893,10 +893,10 @@ function App() {
             <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:4,marginBottom:8 }}>
               {[
                 {n: allJobs.length > 0 ? ((allJobs.filter(j=>j.status==="interview").length / allJobs.length)*100).toFixed(1) + "%" : "0%", l:"Response Rate", c:C.acc},
-                {n: (() => { const replied = allJobs.filter(j=>j.appliedAt && j.status==="interview"); if(!replied.length) return "â"; const avg = replied.reduce((a,j)=> a + (Date.now()-new Date(j.appliedAt).getTime()),0)/(replied.length*86400000); return Math.round(avg) + "d"; })(), l:"Avg Time to Reply", c:C.acc2},
-                {n: allJobs.length > 0 ? Math.round(allJobs.reduce((a,j)=>a+j.atsScore,0)/allJobs.length) + "%" : "â", l:"ATS Avg Score", c:C.warn},
-                {n: (() => { const srcs = {}; allJobs.filter(j=>j.status==="interview").forEach(j=> srcs[j.source]=(srcs[j.source]||0)+1); const best = Object.entries(srcs).sort((a,b)=>b[1]-a[1])[0]; return best?best[0]:"â"; })(), l:"Best Source", c:"#a78bfa"},
-                {n: allJobs.length > 0 ? "$" + Math.round(allJobs.filter(j=>j.salaryIntel).reduce((a,j)=>a+(j.salaryIntel?.max||0),0)/(allJobs.filter(j=>j.salaryIntel).length||1)/1000) + "k" : "â", l:"Avg Salary", c:C.acc},
+                {n: (() => { const replied = allJobs.filter(j=>j.appliedAt && j.status==="interview"); if(!replied.length) return "—"; const avg = replied.reduce((a,j)=> a + (Date.now()-new Date(j.appliedAt).getTime()),0)/(replied.length*86400000); return Math.round(avg) + "d"; })(), l:"Avg Time to Reply", c:C.acc2},
+                {n: allJobs.length > 0 ? Math.round(allJobs.reduce((a,j)=>a+j.atsScore,0)/allJobs.length) + "%" : "—", l:"ATS Avg Score", c:C.warn},
+                {n: (() => { const srcs = {}; allJobs.filter(j=>j.status==="interview").forEach(j=> srcs[j.source]=(srcs[j.source]||0)+1); const best = Object.entries(srcs).sort((a,b)=>b[1]-a[1])[0]; return best?best[0]:"—"; })(), l:"Best Source", c:"#a78bfa"},
+                {n: allJobs.length > 0 ? "$" + Math.round(allJobs.filter(j=>j.salaryIntel).reduce((a,j)=>a+(j.salaryIntel?.max||0),0)/(allJobs.filter(j=>j.salaryIntel).length||1)/1000) + "k" : "—", l:"Avg Salary", c:C.acc},
               ].map(s => (
                 <div key={s.l} style={{ background:C.card,border:"1px solid " + C.bdr,borderRadius:11,padding:4,textAlign:"center" }}>
                   <div style={{ fontSize:11,fontWeight:800,color:s.c }}>{s.n}</div>
@@ -904,7 +904,7 @@ function App() {
                 </div>
               ))}
             </div>
-            <Card c={C} label="ð SOURCE PERFORMANCE">
+            <Card c={C} label="📊 SOURCE PERFORMANCE">
               {(() => {
                 const srcs = {};
                 allJobs.forEach(j => {
@@ -929,7 +929,7 @@ function App() {
             {/* Charts Row */}
             <div style={{ display:"flex",gap:6,marginBottom:6,flexWrap:"wrap" }}>
               <div style={{ flex:"0 0 calc(65% - 6px)",minWidth:280,background:C.card,border:"1px solid " + C.bdr,borderRadius:7,padding:8 }}>
-                <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut,marginBottom:6,textTransform:"uppercase",letterSpacing:1 }}>ð Applications Over Time</div>
+                <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut,marginBottom:6,textTransform:"uppercase",letterSpacing:1 }}>📈 Applications Over Time</div>
                 {(() => {
                   const byDate = {};
                   allJobs.forEach(j => {
@@ -951,7 +951,7 @@ function App() {
                 })()}
               </div>
               <div style={{ flex:"0 0 calc(35% - 6px)",minWidth:200,background:C.card,border:"1px solid " + C.bdr,borderRadius:7,padding:8 }}>
-                <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut,marginBottom:6,textTransform:"uppercase",letterSpacing:1 }}>ð¥§ Status Distribution</div>
+                <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut,marginBottom:6,textTransform:"uppercase",letterSpacing:1 }}>🥧 Status Distribution</div>
                 {(() => {
                   const statuses = {};
                   allJobs.forEach(j => { statuses[j.status] = (statuses[j.status]||0)+1; });
@@ -988,15 +988,15 @@ function App() {
                 })()}
               </div>
             </div>
-            <Card c={C} label="ð± FOLLOW-UP QUEUE">
+            <Card c={C} label="📱 FOLLOW-UP QUEUE">
               {followUps.filter(fu => fu.status !== "sent").slice(0,5).map(fu => {
                 const days = Math.floor((Date.now() - new Date(fu.appliedAt).getTime()) / 86400000);
                 return (
                   <div key={fu.jobId} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid " + C.bdr }}>
-                    <span style={{ fontSize:10,color:days >= 7 ? C.warn : C.mut }}>{days >= 7 ? "â ï¸" : "ð"} {fu.company} â {days} days</span>
+                    <span style={{ fontSize:10,color:days >= 7 ? C.warn : C.mut }}>{days >= 7 ? "⚠️" : "🕐"} {fu.company} — {days} days</span>
                     <div style={{ display:"flex",gap:4 }}>
                       <button onClick={()=>openFollowUpModal(fu)} style={{ padding:"3px 8px",borderRadius:4,border:"1px solid rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.2)",background:"transparent",color:C.acc,fontFamily:"monospace",fontSize:8,cursor:"pointer" }}>View Draft</button>
-                      <button onClick={()=>openFollowUpModal(fu)} style={{ padding:"3px 8px",borderRadius:4,border:"1px solid rgba(255,179,71,0.2)",background:"transparent",color:C.warn,fontFamily:"monospace",fontSize:8,cursor:"pointer" }}>ð± Send WA</button>
+                      <button onClick={()=>openFollowUpModal(fu)} style={{ padding:"3px 8px",borderRadius:4,border:"1px solid rgba(255,179,71,0.2)",background:"transparent",color:C.warn,fontFamily:"monospace",fontSize:8,cursor:"pointer" }}>📱 Send WA</button>
                     </div>
                   </div>
                 );
@@ -1010,8 +1010,8 @@ function App() {
         {followUpModal && (
           <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:10 }} onClick={()=>setFollowUpModal(null)}>
             <div onClick={e=>e.stopPropagation()} style={{ background:C.card,borderRadius:8,padding:24,maxWidth:560,width:"100%",border:"1px solid " + C.bdr }}>
-              <div style={{ fontFamily:"monospace",fontSize:11,color:C.acc,marginBottom:16 }}>ð± Follow-Up Draft â {followUpModal.company}</div>
-              <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut,marginBottom:6 }}>TO: Your WhatsApp ({WAHA_NUMBER}) â you forward to recruiter</div>
+              <div style={{ fontFamily:"monospace",fontSize:11,color:C.acc,marginBottom:16 }}>📱 Follow-Up Draft — {followUpModal.company}</div>
+              <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut,marginBottom:6 }}>TO: Your WhatsApp ({WAHA_NUMBER}) — you forward to recruiter</div>
               <div style={{ padding:12,borderRadius:8,background:C.bg,border:"1px solid " + C.bdr,fontFamily:"monospace",fontSize:10,color:C.txt,lineHeight:1.8,marginBottom:6,whiteSpace:"pre-wrap" }}>
                 {followUpModal.draft || "Generating draft..."}
               </div>
@@ -1022,13 +1022,13 @@ function App() {
               <div style={{ display:"flex",gap:4 }}>
                 <button onClick={approveAndSendFollowUp} disabled={followUpModal.status==="sending"}
                   style={{ flex:2,padding:5,borderRadius:8,border:"none",background:"linear-gradient(135deg," + C.acc + "," + (darkMode?"#00c88a":"#009963") + ")",color:darkMode?"#05060a":"#fff",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>
-                  {followUpModal.status==="sending" ? "Sending..." : "â Approve & Send via WhatsApp"}
+                  {followUpModal.status==="sending" ? "Sending..." : "✅ Approve & Send via WhatsApp"}
                 </button>
                 <button onClick={reviseFollowUp} disabled={!followUpModal.feedback || followUpModal.status==="revising"}
                   style={{ flex:1,padding:5,borderRadius:8,border:"1px solid " + C.bdr,background:"transparent",color:C.acc2,fontWeight:600,fontSize:11,cursor:followUpModal.feedback?"pointer":"not-allowed",fontFamily:"monospace" }}>
-                  {followUpModal.status==="revising" ? "Revising..." : "âï¸ Revise"}
+                  {followUpModal.status==="revising" ? "Revising..." : "✏️ Revise"}
                 </button>
-                <button onClick={()=>setFollowUpModal(null)} style={{ padding:5,borderRadius:8,border:"1px solid rgba(" + (darkMode?"255,107,107":"224,85,85") + ",0.2)",background:"transparent",color:C.err,fontSize:11,cursor:"pointer",fontFamily:"monospace" }}>â</button>
+                <button onClick={()=>setFollowUpModal(null)} style={{ padding:5,borderRadius:8,border:"1px solid rgba(" + (darkMode?"255,107,107":"224,85,85") + ",0.2)",background:"transparent",color:C.err,fontSize:11,cursor:"pointer",fontFamily:"monospace" }}>❌</button>
               </div>
             </div>
           </div>
@@ -1039,16 +1039,16 @@ function App() {
           <div style={{ animation:"fi .3s" }}>
             {prepLoading ? (
               <div style={{ textAlign:"center",padding:40 }}>
-                <div style={{ fontSize:11,marginBottom:6 }}>â³</div>
+                <div style={{ fontSize:11,marginBottom:6 }}>⏳</div>
                 <div style={{ fontFamily:"monospace",fontSize:11,color:C.mut }}>Claude is generating your prep kit...</div>
               </div>
             ) : prepData ? (
               <div>
                 <div style={{ marginBottom:8 }}>
-                  <h2 style={{ fontSize:11,fontWeight:800,marginBottom:4 }}>ð Interview Prep: {prepData.title}</h2>
+                  <h2 style={{ fontSize:11,fontWeight:800,marginBottom:4 }}>📚 Interview Prep: {prepData.title}</h2>
                   <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut }}>{prepData.company}</div>
                 </div>
-                <Card c={C} label="ð¢ COMPANY BRIEF">
+                <Card c={C} label="🏢 COMPANY BRIEF">
                   {prepData.brief && Object.entries(prepData.brief).map(([k,v])=>(
                     <div key={k} style={{ marginBottom:6 }}>
                       <span style={{ fontFamily:"monospace",fontSize:8,color:C.mut,textTransform:"uppercase" }}>{k}: </span>
@@ -1056,25 +1056,25 @@ function App() {
                     </div>
                   ))}
                 </Card>
-                <Card c={C} label="â PRACTICE QUESTIONS">
+                <Card c={C} label="❓ PRACTICE QUESTIONS">
                   {(prepData.questions||[]).map((q,i)=>(
                     <div key={i} style={{ padding:4,background:C.bg,borderRadius:6,marginBottom:6 }}>
                       <div style={{ fontFamily:"monospace",fontSize:10,color:C.txt,fontWeight:600 }}>{i+1}. {q.q}</div>
-                      <div style={{ fontFamily:"monospace",fontSize:9,color:C.acc,marginTop:4 }}>ð¡ {q.hint}</div>
+                      <div style={{ fontFamily:"monospace",fontSize:9,color:C.acc,marginTop:4 }}>💡 {q.hint}</div>
                     </div>
                   ))}
                 </Card>
-                <Card c={C} label="ð CHEAT SHEET">
+                <Card c={C} label="📋 CHEAT SHEET">
                   {prepData.cheatSheet && (
                     <div>
                       {prepData.cheatSheet.strengths && <div style={{ marginBottom:6 }}><Lbl c={C}>STRENGTHS</Lbl><div style={{ fontFamily:"monospace",fontSize:9,color:C.txt }}>{prepData.cheatSheet.strengths.join(", ")}</div></div>}
                       {prepData.cheatSheet.keywords && <div style={{ marginBottom:6 }}><Lbl c={C}>KEYWORDS</Lbl><div style={{ fontFamily:"monospace",fontSize:9,color:C.acc }}>{prepData.cheatSheet.keywords.join(", ")}</div></div>}
-                      {prepData.cheatSheet.questionsToAsk && <div style={{ marginBottom:6 }}><Lbl c={C}>ASK THEM</Lbl>{prepData.cheatSheet.questionsToAsk.map((q,i)=><div key={i} style={{ fontFamily:"monospace",fontSize:9,color:C.txt }}>â¢ {q}</div>)}</div>}
+                      {prepData.cheatSheet.questionsToAsk && <div style={{ marginBottom:6 }}><Lbl c={C}>ASK THEM</Lbl>{prepData.cheatSheet.questionsToAsk.map((q,i)=><div key={i} style={{ fontFamily:"monospace",fontSize:9,color:C.txt }}>• {q}</div>)}</div>}
                       <div><Lbl c={C}>SALARY RANGE</Lbl><div style={{ fontFamily:"monospace",fontSize:10,color:C.warn }}>{prepData.cheatSheet.salaryRange}</div></div>
                     </div>
                   )}
                 </Card>
-                <button onClick={startMock} style={{ width:"100%",padding:14,borderRadius:11,border:"none",background:"linear-gradient(135deg," + C.acc2 + ",#4070cc)",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Syne',sans-serif",marginTop:8 }}>ð¤ Start Mock Interview</button>
+                <button onClick={startMock} style={{ width:"100%",padding:14,borderRadius:11,border:"none",background:"linear-gradient(135deg," + C.acc2 + ",#4070cc)",color:"#fff",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Syne',sans-serif",marginTop:8 }}>🎤 Start Mock Interview</button>
               </div>
             ) : <div style={{ textAlign:"center",padding:40,fontFamily:"monospace",fontSize:10,color:C.mut }}>Click "Prep" on any job card to generate your interview kit</div>}
           </div>
@@ -1083,7 +1083,7 @@ function App() {
         {/* MOCK INTERVIEW VIEW */}
         {view==="mock" && mockState && (
           <div style={{ animation:"fi .3s",maxWidth:640,margin:"0 auto" }}>
-            <h2 style={{ fontSize:11,fontWeight:800,marginBottom:4 }}>ð¤ Mock Interview</h2>
+            <h2 style={{ fontSize:11,fontWeight:800,marginBottom:4 }}>🎤 Mock Interview</h2>
             <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut,marginBottom:8 }}>{mockState.title} at {mockState.company}</div>
             {/* Progress bar */}
             <div style={{ display:"flex",gap:3,marginBottom:8 }}>
@@ -1100,27 +1100,27 @@ function App() {
                 </Card>
                 <button onClick={submitMockAnswer} disabled={!mockState.currentAnswer.trim()}
                   style={{ width:"100%",padding:14,borderRadius:11,border:"none",background:mockState.currentAnswer.trim()?"linear-gradient(135deg," + C.acc + "," + C.acc2 + ")":C.bdr,color:mockState.currentAnswer.trim()?(darkMode?"#05060a":"#fff"):C.mut,fontWeight:700,fontSize:11,cursor:mockState.currentAnswer.trim()?"pointer":"not-allowed",fontFamily:"'Syne',sans-serif" }}>
-                  Submit Answer â
+                  Submit Answer →
                 </button>
                 {/* Previous feedback */}
                 {mockState.feedback.length > 0 && (
-                  <Card c={C} label="ð PREVIOUS FEEDBACK" style={{marginTop:12}}>
+                  <Card c={C} label="📊 PREVIOUS FEEDBACK" style={{marginTop:12}}>
                     {mockState.feedback.map((fb,i) => (
                       <div key={i} style={{ padding:4,background:C.bg,borderRadius:6,marginBottom:6 }}>
                         <div style={{ display:"flex",justifyContent:"space-between",marginBottom:4 }}>
                           <span style={{ fontFamily:"monospace",fontSize:9,color:C.mut }}>Q{i+1}</span>
                           <span style={{ fontFamily:"monospace",fontSize:11,fontWeight:700,color:fb.score>=80?C.acc:fb.score>=60?C.warn:C.err }}>{fb.score}/100</span>
                         </div>
-                        {fb.good?.length>0 && <div style={{ fontFamily:"monospace",fontSize:8,color:C.acc }}>â {fb.good.join(", ")}</div>}
-                        {fb.improve?.length>0 && <div style={{ fontFamily:"monospace",fontSize:8,color:C.warn }}>â ï¸ {fb.improve.join(", ")}</div>}
-                        {fb.tip && <div style={{ fontFamily:"monospace",fontSize:8,color:C.acc2 }}>ð¡ {fb.tip}</div>}
+                        {fb.good?.length>0 && <div style={{ fontFamily:"monospace",fontSize:8,color:C.acc }}>✅ {fb.good.join(", ")}</div>}
+                        {fb.improve?.length>0 && <div style={{ fontFamily:"monospace",fontSize:8,color:C.warn }}>⚠️ {fb.improve.join(", ")}</div>}
+                        {fb.tip && <div style={{ fontFamily:"monospace",fontSize:8,color:C.acc2 }}>💡 {fb.tip}</div>}
                       </div>
                     ))}
                   </Card>
                 )}
               </div>
             ) : (
-              <Card c={C} label="ð MOCK COMPLETE">
+              <Card c={C} label="🎉 MOCK COMPLETE">
                 <div style={{ textAlign:"center",padding:10 }}>
                   <div style={{ fontSize:11,fontWeight:800,color:C.acc,marginBottom:8 }}>{Math.round(mockState.scores.reduce((a,s)=>a+s,0)/mockState.scores.length)}/100</div>
                   <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut,marginBottom:16 }}>Average Score</div>
@@ -1131,7 +1131,7 @@ function App() {
                     </div>
                   ))}
                 </div>
-                <button onClick={()=>setView("prep")} style={{ width:"100%",padding:12,borderRadius:8,border:"1px solid " + C.bdr,background:"transparent",color:C.acc,fontWeight:600,fontSize:11,cursor:"pointer",fontFamily:"monospace",marginTop:8 }}>â Back to Prep</button>
+                <button onClick={()=>setView("prep")} style={{ width:"100%",padding:12,borderRadius:8,border:"1px solid " + C.bdr,background:"transparent",color:C.acc,fontWeight:600,fontSize:11,cursor:"pointer",fontFamily:"monospace",marginTop:8 }}>← Back to Prep</button>
               </Card>
             )}
           </div>
@@ -1151,7 +1151,7 @@ function App() {
   );
 }
 
-// âââ MICRO COMPONENTS âââââââââââââââââââââââââââââââââââââââ
+// ─── MICRO COMPONENTS ───────────────────────────────────────
 function Card({c,label,children,style:s}) {
   return <div style={{background:c.card,border:"1px solid " + c.bdr,borderRadius:7,padding:4,marginBottom:6,...s}}>
     {label && <div style={{fontFamily:"monospace",fontSize:9,color:c.mut,marginBottom:5,textTransform:"uppercase",letterSpacing:1}}>{label}</div>}
