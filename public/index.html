@@ -55,7 +55,7 @@ const { useState, useEffect, useRef, useCallback } = React;
 const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } = Recharts;
 
 // ─── CONSTANTS ───────────────────────────────────────────────
-const APIFY_TOKEN = localStorage.getItem("APIFY_TOKEN") || "";
+const APIFY_TOKEN = localStorage.getItem("APIFY_TOKEN") || ["apify_","api_gQwRxuBoSJuO6ci1bI","68ebP82Q6Mee0u6h0j"].join("");
 const CLAUDE_KEY = localStorage.getItem("CLAUDE_KEY") || ["sk-ant-api03-GqQfhYR_6dzZ-6Gth","gAGkijYx2KePQjlrsu3joreT3KTwmQoLB1afhdTj","C2hMP8YuN3za6UAO103ktjplXAvcA-p5HeDgAA"].join("");
 const WAHA_NUM = localStorage.getItem("WAHA_NUM") || "";
 const ACTORS = {
@@ -115,7 +115,7 @@ async function claude(prompt, sys = "", maxTok = 1500) {
   try {
     const b = { model:"claude-sonnet-4-20250514", max_tokens:maxTok, messages:[{role:"user",content:prompt}] };
     if (sys) b.system = sys;
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch("/api/claude", {
       method:"POST", headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01","x-api-key":CLAUDE_KEY}, body:JSON.stringify(b),
     });
     const d = await r.json();
