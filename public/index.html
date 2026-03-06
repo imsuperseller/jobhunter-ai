@@ -1194,7 +1194,7 @@ function App() {
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:${C.bdr};border-radius:3px}
       `}</style>
-    {showAutoApplySettings && <AutoApplySettingsModal onClose={()=>setShowAutoApplySettings(false)} />}
+    {showAutoApplySettings && <AutoApplySettingsModal show={true} onClose={()=>setShowAutoApplySettings(false)} />}
     </div>
   );
 }
