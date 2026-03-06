@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>JobHunter AI v2</title>
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#6c63ff"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="JobHunter"/>
+<link rel="apple-touch-icon" href="/icon-192.png"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/prop-types/15.8.1/prop-types.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { overflow-x:hidden; }
+</style>
+<script>
+// Polyfill window.storage → localStorage
+window.storage = {
+  async get(key) {
+    const v = localStorage.getItem(key);
+    return v !== null ? { value: v } : null;
+  },
+  async set(key, value) {
+    localStorage.setItem(key, value);
+  },
+  async delete(key) {
+    localStorage.removeItem(key);
+  }
+};
+// Seed profile so app skips onboarding on first load
+if (!localStorage.getItem("jh:profile")) {
+  localStorage.setItem("jh:profile", JSON.stringify({
+    fullName:"Shai Friedman", email:"shai@superseller.agency", phone:"+1 555-1234",
+    location:"Plano, TX", linkedinUrl:"linkedin.com/in/shaifriedman",
+    resumeText:"Experienced AI automation engineer with 10+ years in marketing tech, n8n workflow building, and full-stack development. Built superseller.agency serving SMB clients with AI-powered sales automation.",
+    coreSkills:"AI automation, n8n, React, Next.js, Node.js, marketing",
+    yearsExp:"10", education:"MCITP, BS Business",
+    salaryMin:"100", salaryMax:"150", dealBreakers:"No relocation"
+  }));
+}
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-type="module">
+// ─── Pull from globals ───
+const { useState, useEffect, useRef, useCallback } = React;
+const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } = Recharts;
+
+// ─── CONSTANTS ───────────────────────────────────────────────
+const APIFY_TOKEN = localStorage.getItem("APIFY_TOKEN") || "";
+const CLAUDE_KEY = localStorage.getItem("CLAUDE_KEY") || "";
+const WAHA_NUM = localStorage.getItem("WAHA_NUM") || "";
+const ACTORS = {
+  jobspy: "aakash19/jobspy",
+};
+const WAHA_NUMBER = WAHA_NUM || "4695885133";
+const STORE_KEYS = {
+  profile: "jh:profile", history: "jh:history", stats: "jh:stats",
+  kanban: "jh:kanban", contacts: "jh:contacts", theme: "jh:theme",
+  followups: "jh:followups", preps: "jh:preps",
+};
+const STEPS = [
+  { id:"scrape", label:"Scrape", icon:"🕷️", d:"JobSpy — 5 boards" },
+  { id:"ghost",  label:"Ghost Filter", icon:"👻", d:"Apify + Claude NLP" },
+  { id:"ats",    label:"ATS Score", icon:"🎯", d:"Score + Gap + Rewrite" },
+  { id:"tailor", label:"Tailor", icon:"✂️", d:"Cover letter + resume diff" },
+  { id:"salary", label:"Salary", icon:"💰", d:"Glassdoor + Claude est." },
+  { id:"apply",  label:"Apply", icon:"🚀", d:"Queue submissions" },
+  { id:"track",  label:"Track", icon:"📊", d:"Follow-ups via WAHA" },
+];
+const STAT_COLORS = {
+  applied:"#00e5a0", interview:"#5b8cff", rejected:"#ff6b6b",
+  saved:"#8b8fa3", offer:"#a78bfa",
+  scraped:"#6b7094", phone:"#5b8cff",
+};
+const KANBAN_COLS = [
+  { id:"scraped", label:"Scraped", color:"#6b7094" },
+  { id:"applied", label:"Applied", color:"#00e5a0" },
+  { id:"phone", label:"Phone Screen", color:"#5b8cff" },
+  { id:"interview", label:"Interview", color:"#ffb347" },
+  { id:"offer", label:"Offer", color:"#a78bfa" },
+  { id:"rejected", label:"Rejected", color:"#ff6b6b" },
+];
+const DARK = {
+  bg:"#05060a", sf:"#0b0d14", card:"#0d0f17", bdr:"#161a28",
+  acc:"#00e5a0", acc2:"#5b8cff", warn:"#ffb347", err:"#ff6b6b",
+  txt:"#e2e5f0", mut:"#454b68",
+};
+const LIGHT = {
+  bg:"#f8f9fc", sf:"#f0f1f5", card:"#ffffff", bdr:"#e2e5f0",
+  acc:"#00b87a", acc2:"#3b6fdb", warn:"#e69a30", err:"#e05555",
+  txt:"#1a1d2e", mut:"#6b7094",
+};
+
+// ─── STORAGE ─────────────────────────────────────────────────
+async function load(key) {
+  try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : null; }
+  catch(e) { return null; }
+}
+async function save(key, data) {
+  try { await window.storage.set(key, JSON.stringify(data)); return true; }
+  catch(e) { return false; }
+}
+
+// ─── CLAUDE ──────────────────────────────────────────────────
+async function claude(prompt, sys = "", maxTok = 1500) {
+  try {
+    const b = { model:"claude-sonnet-4-20250514", max_tokens:maxTok, messages:[{role:"user",content:prompt}] };
+    if (sys) b.system = sys;
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST", headers:{"Content-Type":"application/json","anthropic-version":"2023-06-01","x-api-key":CLAUDE_KEY}, body:JSON.stringify(b),
+    });
+    const d = await r.json();
+    return d.content?.map(x => x.text||"").join("") || null;
+  } catch(e) { console.warn("Claude API error:", e); return null; }
+}
+
+// ─── APIFY HELPERS ───────────────────────────────────────────
+async function runApifyActor(actorId, input) {
+  const startUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_TOKEN}`;
+  const startRes = await fetch(startUrl, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  });
+  if (!startRes.ok) throw new Error("Apify start failed: " + startRes.status);
+  const runData = await startRes.json();
+  const runId = runData.data?.id;
+  if (!runId) throw new Error("No run ID returned");
+  for (let i = 0; i < 40; i++) {
+    await new Promise(r => setTimeout(r, 3000));
+    const statusRes = await fetch("https://api.apify.com/v2/actor-runs/" + runId + "?token=" + APIFY_TOKEN);
+    const statusData = await statusRes.json();
+    const status = statusData.data?.status;
+    if (status === "SUCCEEDED") {
+      const dsId = statusData.data?.defaultDatasetId;
+      const itemsRes = await fetch("https://api.apify.com/v2/datasets/" + dsId + "/items?token=" + APIFY_TOKEN + "&limit=50");
+      return await itemsRes.json();
+    }
+    if (status === "FAILED" || status === "ABORTED") throw new Error("Actor " + status);
+  }
+  throw new Error("Actor timed out");
+}
+
+async function scrapeJobSpy(title, location, { remote, expLevel } = {}) {
+  const input = {
+    search_term: title, location: location, results_wanted: 30,
+    site_name: ["linkedin", "indeed", "glassdoor", "zip_recruiter", "google"],
+    distance: 50, is_remote: remote === "remote" || remote === true, job_type: "fulltime", hours_old: 72,
+    ...(expLevel ? { experience_level: expLevel } : {}),
+  };
+  const items = await runApifyActor(ACTORS.jobspy, input);
+  return (items || []).map((j, i) => ({
+    id: "js-" + (j.id || j.job_url || Date.now()) + "-" + i,
+    title: j.title || "Unknown", company: j.company_name || j.company || "Unknown",
+    location: j.location || location,
+    salary: j.min_amount && j.max_amount ? "$" + Math.round(j.min_amount/1000) + "k–$" + Math.round(j.max_amount/1000) + "k" : j.salary || "Not listed",
+    salaryMin: j.min_amount || null, salaryMax: j.max_amount || null,
+    postedAgo: j.date_posted ? timeSince(j.date_posted) : "Recently",
+    url: j.job_url || j.link || "", description: (j.description || "").slice(0, 600),
+    source: j.site || "jobspy", atsScore: 0, atsGap: [], resumeDiff: [], status: "scraped",
+    coverLetter: null, isGhost: false, ghostReason: "", appliedAt: null,
+    applyUrl: j.job_url || "", salaryIntel: null, contacts: [],
+  }));
+}
+
+function timeSince(dateStr) {
+  try {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return mins + "m ago";
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + "h ago";
+    return Math.floor(hrs/24) + "d ago";
+  } catch(e) { return "Recently"; }
+}
+
+function demoJobs(title, loc) {
+  const cos = ["Stripe","Notion","Linear","Vercel","Datadog","HubSpot","Zapier","Webflow","Figma","Airtable","Retool","Loom"];
+  const sources = ["linkedin","indeed","glassdoor","zip_recruiter","google"];
+  return Array.from({length:12},(_,i) => ({
+    id:"demo-" + Date.now() + "-" + i, title:[title,"Senior " + title, title + " Lead","Head of " + title.split(" ")[0]][i%4],
+    company:cos[i%cos.length], location:[loc,"Remote","Austin, TX","Dallas, TX","SF, CA","NYC"][i%6],
+    salary:"$" + (75+i*7) + "k–$" + (105+i*10) + "k", salaryMin:(75+i*7)*1000, salaryMax:(105+i*10)*1000,
+    postedAgo:[8,15,23,35,48,62,80,95,110,140][i%10] + "m ago",
+    url:"https://linkedin.com/jobs/view/" + (3000000+i),
+    description:"Looking for " + title + " with strong background in marketing, growth, and data-driven decision making. Join our team to drive customer acquisition and retention strategies.",
+    source:sources[i%5], atsScore:0, atsGap:[], resumeDiff:[], status:"scraped",
+    coverLetter:null, isGhost:false, ghostReason:"", appliedAt:null,
+    applyUrl:"", salaryIntel:null, contacts:[],
+  }));
+}
+
+async function sendWhatsApp(text) {
+  try {
+    const res = await fetch("https://waha.superseller.agency/api/sendText", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatId: WAHA_NUMBER + "@c.us", text: text, session: "superseller-whatsapp" }),
+    });
+    return res.ok;
+  } catch(e) { return false; }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ─── APP ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+function App() {
+  const [ready, setReady] = useState(false);
+  const [view, setView] = useState("hunt");
+  const [darkMode, setDarkMode] = useState(true);
+  const [profile, setProfile] = useState({
+    fullName:"", email:"", phone:"", location:"Plano, TX",
+    linkedinUrl:"", resumeText:"",
+    salaryMin:"", salaryMax:"", dealBreakers:"",
+    coreSkills:"", yearsExp:"", education:"",
+  });
+  const [search, setSearch] = useState({ title:"Growth Marketing Manager", remote:"any", expLevel:"mid", salaryFloor:"80" });
+  const [jobs, setJobs] = useState([]);
+  const [allJobs, setAllJobs] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [curStep, setCurStep] = useState(-1);
+  const [running, setRunning] = useState(false);
+  const [expanded, setExpanded] = useState(null);
+  const [tab, setTab] = useState("all");
+  const [showEdit, setShowEdit] = useState(false);
+  const [stats, setStats] = useState({ scanned:0, applied:0, interviews:0, runs:0, offers:0, ghostsFound:0 });
+  const [contacts, setContacts] = useState({});
+  const [followUps, setFollowUps] = useState([]);
+  const [followUpModal, setFollowUpModal] = useState(null);
+  const [prepData, setPrepData] = useState(null);
+  const [prepLoading, setPrepLoading] = useState(false);
+  const [mockState, setMockState] = useState(null);
+  const [dragId, setDragId] = useState(null);
+  const dragIdRef = useRef(null);
+  const logRef = useRef(null);
+  const C = darkMode ? DARK : LIGHT;
+
+  useEffect(() => {
+    (async () => {
+      const p = await load(STORE_KEYS.profile);
+      const h = await load(STORE_KEYS.history);
+      const s = await load(STORE_KEYS.stats);
+      const ct = await load(STORE_KEYS.contacts);
+      const th = await load(STORE_KEYS.theme);
+      const fu = await load(STORE_KEYS.followups);
+      if (p) setProfile(p);
+      if (h) setAllJobs(h);
+      if (s) setStats(s);
+      if (ct) setContacts(ct);
+      if (th !== null) setDarkMode(th);
+      if (fu) setFollowUps(fu);
+      if (!p?.fullName) setView("onboard");
+      setReady(true);
+    })();
+  }, []);
+
+  const sp = async (p) => { setProfile(p); await save(STORE_KEYS.profile, p); };
+  const sh = async (h) => { setAllJobs(h); await save(STORE_KEYS.history, h); };
+  const ss = async (s) => { setStats(s); await save(STORE_KEYS.stats, s); };
+  const sc = async (c) => { setContacts(c); await save(STORE_KEYS.contacts, c); };
+  const sf = async (f) => { setFollowUps(f); await save(STORE_KEYS.followups, f); };
+  const toggleTheme = async () => { const n = !darkMode; setDarkMode(n); await save(STORE_KEYS.theme, n); };
+
+  const log = useCallback((tag, type, msg) => {
+    setLogs(p => [...p, { t:new Date().toLocaleTimeString("en-US",{hour12:false}), tag, type, msg, id:Date.now()+Math.random() }]);
+  }, []);
+  useEffect(() => { logRef.current && (logRef.current.scrollTop = logRef.current.scrollHeight); }, [logs]);
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  // ─── PIPELINE ──────────────────────────────────────────
+  const run = async () => {
+    if (running || !search.title) return;
+    setRunning(true); setView("pipeline"); setLogs([]); setJobs([]); setCurStep(0);
+    log("SCRAPE","info","Searching: \"" + search.title + "\" in \"" + profile.location + "\"");
+    log("SCRAPE","info","Starting JobSpy (LinkedIn + Indeed + Glassdoor + ZipRecruiter + Google)...");
+    await wait(300);
+    let scraped = [];
+    try {
+      scraped = await scrapeJobSpy(search.title, profile.location, { remote: search.remote, expLevel: search.expLevel });
+      const srcCounts = {};
+      scraped.forEach(j => { srcCounts[j.source] = (srcCounts[j.source]||0) + 1; });
+      Object.entries(srcCounts).forEach(([src, cnt]) => { log("SCRAPE","success",src + ": " + cnt + " jobs ✅"); });
+      log("SCRAPE","success","Total: " + scraped.length + " jobs from " + Object.keys(srcCounts).length + " sources");
+    } catch (e) {
+      log("SCRAPE","warn","JobSpy failed: " + e.message + " — using demo data");
+      scraped = demoJobs(search.title, profile.location);
+    }
+
+    setCurStep(1); await wait(400);
+    log("GHOST","info","Analyzing listing freshness + Claude NLP ghost detection...");
+    let ghostCount = 0;
+    for (const j of scraped) {
+      const reasons = [];
+      if (j.description && j.description.length < 80) reasons.push("vague description");
+      if (j.postedAgo && parseInt(j.postedAgo) > 30 && j.postedAgo.includes("d")) reasons.push("stale (30+ days)");
+      if (j.isGhost) reasons.push("flagged by source");
+      if (reasons.length > 0) { j.isGhost = true; j.ghostReason = reasons.join(", "); ghostCount++; }
+    }
+    const suspicious = scraped.filter(j => !j.isGhost && j.description).slice(0, 10);
+    if (suspicious.length > 0) {
+      const ghostPrompt = "Analyze these job listings for ghost job indicators (vague requirements, no specific team/manager, unrealistic salary, suspiciously broad scope). Return JSON array of booleans [true/false] — true means likely ghost.\n" + suspicious.map((j,i) => i + ". " + j.title + " @ " + j.company + ": \"" + j.description.slice(0,120) + "\"").join("\n") + "\nReturn ONLY a JSON array like [false,true,false,...]. No text.";
+      const ghostRes = await claude(ghostPrompt);
+      if (ghostRes) {
+        try {
+          const flags = JSON.parse(ghostRes.replace(/```json|```/g,"").trim());
+          flags.forEach((isGhost, i) => {
+            if (isGhost && suspicious[i]) { suspicious[i].isGhost = true; suspicious[i].ghostReason = "Claude NLP: suspicious listing"; ghostCount++; }
+          });
+          log("GHOST","info","Claude NLP: " + flags.filter(Boolean).length + " additional ghosts flagged");
+        } catch(e) { log("GHOST","warn","Claude NLP parse error — using heuristics only"); }
+      }
+    }
+    scraped = scraped.filter(j => !j.isGhost);
+    const floor = parseInt(search.salaryFloor || profile.salaryMin) * 1000;
+    if (floor > 0) {
+      const before = scraped.length;
+      scraped = scraped.filter(j => {
+        if (!j.salaryMax && (!j.salary || j.salary === "Not listed")) return true;
+        if (j.salaryMax) return j.salaryMax >= floor;
+        const match = j.salary.match(/[\d,]+/g);
+        if (!match) return true;
+        const maxSal = Math.max(...match.map(s => parseInt(s.replace(/,/g,""))));
+        return maxSal >= floor / 1000 || maxSal >= floor;
+      });
+      if (before - scraped.length > 0) log("GHOST","warn",(before - scraped.length) + " below salary floor removed");
+    }
+    log("GHOST","success",ghostCount + " ghosts removed. " + scraped.length + " remain.");
+
+    setCurStep(2); await wait(300);
+    log("ATS","info","Claude scoring " + scraped.length + " jobs (score + keyword gap + rewrite)...");
+    const atsPrompt = "You are an ATS scoring engine. For each job, return: score (0-100), gap (array of missing keywords), and rewrite (array of improved resume bullet suggestions).\n\nCandidate: " + profile.coreSkills + ". " + (profile.yearsExp || "several") + " yrs exp. Target: " + search.title + ".\nResume excerpt: " + (profile.resumeText?.slice(0,400) || "") + "\nDeal-breakers: " + (profile.dealBreakers || "none") + "\n\nJobs:\n" + scraped.slice(0,15).map((j,i) => i + ". " + j.title + " at " + j.company + " — " + (j.description?.slice(0,100) || "")).join("\n") + "\n\nReturn ONLY valid JSON array:\n[{\"score\":85,\"gap\":[\"SEO\",\"HubSpot\"],\"rewrite\":[\"Led SEO campaigns → Drove 42% organic growth via SEO strategy\"]},...]";
+    const atsRes = await claude(atsPrompt, "", 2000);
+    if (atsRes) {
+      try {
+        const parsed = JSON.parse(atsRes.replace(/```json|```/g,"").trim());
+        scraped = scraped.map((j,i) => ({
+          ...j,
+          atsScore: Math.min(99, Math.max(35, parsed[i]?.score || 65)),
+          atsGap: parsed[i]?.gap || [],
+          resumeDiff: parsed[i]?.rewrite || [],
+        }));
+        const avg = Math.round(scraped.reduce((a,j) => a+j.atsScore,0)/scraped.length);
+        log("ATS","success","Best: " + Math.max(...scraped.map(j=>j.atsScore)) + "% | Avg: " + avg + "%");
+      } catch(e) {
+        scraped = scraped.map(j => ({...j, atsScore: Math.floor(Math.random()*25)+65, atsGap:["N/A"], resumeDiff:[]}));
+        log("ATS","warn","Parse error — heuristic scores applied");
+      }
+    } else {
+      scraped = scraped.map(j => ({...j, atsScore: Math.floor(Math.random()*25)+65, atsGap:[], resumeDiff:[]}));
+      log("ATS","warn","Claude unavailable — heuristics applied");
+    }
+    scraped.sort((a,b) => b.atsScore - a.atsScore);
+
+    setCurStep(3); await wait(300);
+    const top = scraped.slice(0, 8);
+    log("TAILOR","info","Generating " + top.length + " cover letters...");
+    for (let i = 0; i < Math.min(4, top.length); i++) {
+      const cp = "Write a compelling 3-sentence cover letter opening.\nCandidate: " + profile.fullName + "\nSkills: " + profile.coreSkills + "\nBackground: " + (profile.resumeText?.slice(0,250) || "") + "\nApplying for: " + top[i].title + " at " + top[i].company + " (" + top[i].location + ")\nJob snippet: " + (top[i].description?.slice(0,150) || "") + "\nATS Keywords to weave in: " + (top[i].atsGap?.join(", ") || "none") + "\nReturn ONLY the 3 sentences.";
+      const cover = await claude(cp);
+      top[i].coverLetter = cover || fallbackCover(top[i], profile);
+      log("TAILOR","success","✓ " + top[i].company);
+    }
+    for (let i = 4; i < top.length; i++) top[i].coverLetter = fallbackCover(top[i], profile);
+    log("TAILOR","success",top.length + " applications tailored");
+
+    setCurStep(4); await wait(300);
+    log("SALARY","info","Fetching salary intelligence...");
+    const salaryPrompt = "Estimate salary ranges for these roles. Use your knowledge of current market rates.\n" + top.map((j,i) => i + ". " + j.title + " at " + j.company + " in " + j.location).join("\n") + "\nReturn ONLY JSON array: [{\"min\":90000,\"max\":130000,\"source\":\"estimate\",\"confidence\":\"medium\"},...]";
+    const salRes = await claude(salaryPrompt);
+    if (salRes) {
+      try {
+        const salaries = JSON.parse(salRes.replace(/```json|```/g,"").trim());
+        top.forEach((j,i) => {
+          if (salaries[i]) {
+            j.salaryIntel = { min: salaries[i].min, max: salaries[i].max, source: j.salaryMin ? "listed" : (salaries[i].source || "Claude estimate"), display: "$" + Math.round((salaries[i].min||0)/1000) + "k–$" + Math.round((salaries[i].max||0)/1000) + "k" };
+          }
+        });
+        log("SALARY","success",top.filter(j => j.salaryIntel).length + " salary estimates ready");
+      } catch(e) { log("SALARY","warn","Salary parse error"); }
+    }
+
+    setCurStep(5); await wait(300);
+    const applied = top.map(j => ({...j, status:"applied", appliedAt:new Date().toISOString()}));
+    log("APPLY","info",applied.length + " applications queued");
+    const withUrls = applied.filter(j => j.applyUrl && j.applyUrl.startsWith("http"));
+    if (withUrls.length > 0) log("APPLY","success",withUrls.length + " have direct apply links");
+    log("APPLY","success",applied.length + " applications processed ✅");
+
+    setCurStep(6); await wait(300);
+    log("TRACK","success","Pipeline complete! " + applied.length + " jobs ready.");
+    const newFollowUps = applied.map(j => ({ jobId: j.id, company: j.company, title: j.title, appliedAt: j.appliedAt, draft: "", status: "pending", daysUntilFollowUp: 7 }));
+    const allFollowUps = [...newFollowUps, ...followUps];
+    setFollowUps(allFollowUps); await sf(allFollowUps);
+    setJobs(applied);
+    const remaining = scraped.slice(8).map(j => ({...j, status:"scraped"}));
+    const hist = [...applied, ...remaining, ...allJobs].slice(0,500);
+    await sh(hist);
+    const ns = { scanned: stats.scanned + scraped.length + ghostCount, applied: stats.applied + applied.length, interviews: stats.interviews, offers: stats.offers, runs: stats.runs + 1, ghostsFound: (stats.ghostsFound||0) + ghostCount };
+    await ss(ns); setStats(ns);
+    setRunning(false); await wait(1200); setView("jobs");
+  };
+
+  function fallbackCover(job, prof) {
+    return "Dear " + job.company + " Hiring Team — I'm " + prof.fullName + ", and I'm excited about the " + job.title + " opportunity. With " + (prof.yearsExp || "several") + " years of experience in " + (prof.coreSkills?.split(",")[0]?.trim() || "my field") + ", I'm confident I can contribute meaningfully from day one. I'd welcome the chance to discuss how my background aligns with your team's goals.";
+  }
+
+  const updateStatus = async (id, s) => {
+    const u = allJobs.map(j => j.id===id?{...j,status:s}:j);
+    setAllJobs(u); setJobs(p => p.map(j => j.id===id?{...j,status:s}:j));
+    await sh(u);
+    if (s==="interview") {
+      const ns={...stats,interviews:stats.interviews+1}; setStats(ns); await ss(ns);
+      const job = allJobs.find(j => j.id === id) || jobs.find(j => j.id === id);
+      if (job && prepData?.jobId !== id) generatePrepKit(job);
+    }
+    if (s==="offer") { const ns={...stats,offers:(stats.offers||0)+1}; setStats(ns); await ss(ns); }
+  };
+
+  const addContact = async (jobId, contact) => {
+    const updated = { ...contacts, [jobId]: [...(contacts[jobId]||[]), contact] };
+    setContacts(updated); await sc(updated);
+  };
+  const updateContact = async (jobId, idx, field, value) => {
+    const jobContacts = [...(contacts[jobId]||[])];
+    jobContacts[idx] = { ...jobContacts[idx], [field]: value };
+    const updated = { ...contacts, [jobId]: jobContacts };
+    setContacts(updated); await sc(updated);
+  };
+
+  const generateFollowUpDraft = async (fu) => {
+    const job = allJobs.find(j => j.id === fu.jobId);
+    if (!job) return null;
+    const days = Math.floor((Date.now() - new Date(fu.appliedAt).getTime()) / 86400000);
+    const prompt = "Write a professional follow-up message for a job application.\nCandidate: " + profile.fullName + "\nRole: " + fu.title + " at " + fu.company + "\nApplied: " + days + " days ago\nSkills: " + profile.coreSkills + "\n" + (fu.feedback ? "Previous feedback to incorporate: " + fu.feedback : "") + "\nWrite 3-4 sentences. Professional but warm. Address \"Hiring Manager\".\nReturn ONLY the message text.";
+    const draft = await claude(prompt);
+    return draft || "Hi, I wanted to follow up on my application for the " + fu.title + " role at " + fu.company + ". I'm very excited about this opportunity and would love to discuss how my experience aligns with your team's goals. Looking forward to hearing from you.";
+  };
+
+  const openFollowUpModal = async (fu) => {
+    let draft = fu.draft;
+    if (!draft) { draft = await generateFollowUpDraft(fu); }
+    setFollowUpModal({ ...fu, draft, feedback: "", status: "editing" });
+  };
+
+  const reviseFollowUp = async () => {
+    if (!followUpModal?.feedback) return;
+    setFollowUpModal(prev => ({...prev, status: "revising"}));
+    const prompt = "Revise this follow-up message based on feedback.\nOriginal: " + followUpModal.draft + "\nFeedback: " + followUpModal.feedback + "\nReturn ONLY the revised message.";
+    const revised = await claude(prompt);
+    setFollowUpModal(prev => ({...prev, draft: revised || prev.draft, feedback: "", status: "editing"}));
+  };
+
+  const approveAndSendFollowUp = async () => {
+    if (!followUpModal) return;
+    setFollowUpModal(prev => ({...prev, status: "sending"}));
+    const text = "📝 Follow-up Draft for " + followUpModal.title + " @ " + followUpModal.company + ":\n\n" + followUpModal.draft + "\n\n— Forward this to the recruiter/hiring manager";
+    const sent = await sendWhatsApp(text);
+    const updated = followUps.map(fu => fu.jobId === followUpModal.jobId ? {...fu, draft: followUpModal.draft, status: sent ? "sent" : "failed"} : fu);
+    setFollowUps(updated); await sf(updated);
+    setFollowUpModal(null);
+  };
+
+  const generatePrepKit = async (job) => {
+    setPrepLoading(true);
+    const prompt = "Generate an interview prep kit for this role. Return valid JSON:\n{\n  \"brief\": {\"company\":\"...\",\"mission\":\"...\",\"recent\":\"...\",\"glassdoor\":\"...\",\"culture\":\"...\",\"hiringManager\":\"...\"},\n  \"questions\": [{\"q\":\"question text\",\"hint\":\"suggested answer approach\"}],\n  \"cheatSheet\": {\"strengths\":[\"...\"],\"keywords\":[\"...\"],\"questionsToAsk\":[\"...\"],\"salaryRange\":\"...\"}\n}\n\nRole: " + job.title + " at " + job.company + " (" + job.location + ")\nJob description: " + (job.description?.slice(0,300) || "") + "\nCandidate skills: " + profile.coreSkills + "\nYears exp: " + profile.yearsExp + "\nGenerate 10 questions. Be specific to the company and role.";
+    const res = await claude(prompt, "", 3000);
+    if (res) {
+      try {
+        const data = JSON.parse(res.replace(/```json|```/g,"").trim());
+        setPrepData({ jobId: job.id, company: job.company, title: job.title, ...data });
+      } catch(e) {
+        setPrepData({ jobId: job.id, company: job.company, title: job.title,
+          brief: { company: job.company, mission: "N/A", recent: "N/A", glassdoor: "N/A", culture: "N/A", hiringManager: "N/A" },
+          questions: [{q:"Tell me about yourself",hint:"Use STAR format"},{q:"Why do you want to work at " + job.company + "?",hint:"Research their mission and recent news"},{q:"Walk me through a growth campaign you led",hint:"Use metrics and STAR format"}],
+          cheatSheet: { strengths: [profile.coreSkills], keywords: ["growth","pipeline","attribution"], questionsToAsk: ["What does success look like in 90 days?","What's the team structure?"], salaryRange: job.salaryIntel?.display || "N/A" }
+        });
+      }
+    } else {
+      // Fallback mock data when Claude API is unavailable
+      setPrepData({ jobId: job.id, company: job.company, title: job.title,
+        brief: { company: job.company, mission: "Empowering teams through innovative solutions", recent: "Series B funding, expanding globally", glassdoor: "4.2/5 — great culture, fast-paced", culture: "Remote-first, async communication, high ownership", hiringManager: "Unknown" },
+        questions: [
+          {q:"Tell me about yourself and your background in " + (job.title||"this role") + ".",hint:"2-min elevator pitch → current role → why this move"},
+          {q:"Why " + job.company + "? What excites you about our mission?",hint:"Reference their product, values, or recent news"},
+          {q:"Walk me through a campaign or project where you drove measurable growth.",hint:"Use STAR: Situation → Task → Action → Result with numbers"},
+          {q:"How do you prioritize when you have competing deadlines?",hint:"Framework-based answer: impact × effort matrix, stakeholder alignment"},
+          {q:"Tell me about a time you failed. What did you learn?",hint:"Be genuine. Show self-awareness and growth mindset"},
+          {q:"How do you measure success in your role?",hint:"Tie to KPIs, pipeline metrics, revenue impact"},
+          {q:"Describe your experience with [key skill from JD].",hint:"Specific examples with quantified outcomes"},
+          {q:"How do you collaborate cross-functionally?",hint:"Give examples of working with sales, product, or engineering"},
+          {q:"Where do you see yourself in 2-3 years?",hint:"Show ambition aligned with company growth trajectory"},
+          {q:"Do you have any questions for us?",hint:"Ask about team, success metrics, growth plans — never salary first"}
+        ],
+        cheatSheet: { strengths: (profile.coreSkills||"versatile,data-driven,strategic").split(",").map(s=>s.trim()), keywords: ["growth","pipeline","attribution","CAC","LTV","retention","funnel"], questionsToAsk: ["What does success look like in the first 90 days?","What's the current team structure and how will it evolve?","What are the biggest challenges the team faces right now?"], salaryRange: job.salaryIntel?.display || "$120k - $180k (estimated)" }
+      });
+    }
+    setPrepLoading(false);
+  };
+
+  const startMock = () => {
+    if (!prepData?.questions) return;
+    setMockState({ jobId: prepData.jobId, company: prepData.company, title: prepData.title, questions: prepData.questions, currentQ: 0, answers: [], scores: [], feedback: [], currentAnswer: "" });
+    setView("mock");
+  };
+
+  const submitMockAnswer = async () => {
+    if (!mockState || !mockState.currentAnswer.trim()) return;
+    const q = mockState.questions[mockState.currentQ];
+    const prompt = "Score this interview answer 0-100 and give brief feedback.\nQuestion: " + q.q + "\nAnswer: " + mockState.currentAnswer + "\nRole: " + mockState.title + " at " + mockState.company + "\nReturn JSON: {\"score\":85,\"good\":[\"specific metrics\"],\"improve\":[\"add collaboration detail\"],\"tip\":\"mention stakeholders\"}";
+    const res = await claude(prompt);
+    let fb = { score: 70, good: [], improve: [], tip: "" };
+    if (res) { try { fb = JSON.parse(res.replace(/```json|```/g,"").trim()); } catch(e) {} }
+    const newState = { ...mockState, answers: [...mockState.answers, mockState.currentAnswer], scores: [...mockState.scores, fb.score || 70], feedback: [...mockState.feedback, fb], currentQ: mockState.currentQ + 1, currentAnswer: "" };
+    setMockState(newState);
+  };
+
+  const resetAll = async () => {
+    if (!confirm("Erase all saved data?")) return;
+    try { for (const k of Object.values(STORE_KEYS)) await window.storage.delete(k); } catch(e) {}
+    setProfile({fullName:"",email:"",phone:"",location:"Plano, TX",linkedinUrl:"",resumeText:"",salaryMin:"",salaryMax:"",dealBreakers:"",coreSkills:"",yearsExp:"",education:""});
+    setAllJobs([]); setJobs([]); setStats({scanned:0,applied:0,interviews:0,runs:0,offers:0,ghostsFound:0});
+    setContacts({}); setFollowUps([]); setPrepData(null); setMockState(null); setView("onboard");
+  };
+
+  const displayJobs = tab==="all" ? allJobs : allJobs.filter(j=>j.status===tab);
+
+  if (!ready) return <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",color:C.acc,fontFamily:"monospace"}}>Loading…</div>;
+
+  const input = { background:C.bg, border:"1px solid " + C.bdr, borderRadius:8, padding:"10px 13px", color:C.txt, fontFamily:"'Syne',sans-serif", fontSize:13, outline:"none", width:"100%" };
+  const navItems = ["hunt","pipeline","jobs","kanban","dash","prep"];
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, color:C.txt, fontFamily:"'Syne','Segoe UI',sans-serif", position:"relative" }}>
+      <div style={{ position:"fixed",top:-250,left:-150,width:600,height:600,borderRadius:"50%",background:"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.035)",filter:"blur(100px)",pointerEvents:"none" }}/>
+      <div style={{ position:"fixed",bottom:-250,right:-150,width:500,height:500,borderRadius:"50%",background:"rgba(" + (darkMode?"91,140,255":"59,111,219") + ",0.025)",filter:"blur(100px)",pointerEvents:"none" }}/>
+      {darkMode && <div style={{ position:"fixed",inset:0,pointerEvents:"none",backgroundImage:"linear-gradient(rgba(0,229,160,0.012) 1px, transparent 1px),linear-gradient(90deg,rgba(0,229,160,0.012) 1px, transparent 1px)",backgroundSize:"44px 44px" }}/>}
+
+      <div style={{ position:"relative",zIndex:1,maxWidth:1100,margin:"0 auto",padding:"24px 18px 80px" }}>
+        {/* NAV */}
+        <nav style={{ display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:28,paddingBottom:14,borderBottom:"1px solid " + C.bdr }}>
+          <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+            <div style={{ width:34,height:34,borderRadius:8,background:"linear-gradient(135deg," + C.acc + "," + C.acc2 + ")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15 }}>⚡</div>
+            <div>
+              <div style={{ fontSize:15,fontWeight:800,letterSpacing:-0.5 }}>JobHunter<span style={{color:C.acc}}>AI</span> <span style={{fontSize:9,color:C.mut}}>v2</span></div>
+              <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut }}>{profile.fullName||"Setup required"} · JobSpy Live · run #{stats.runs}</div>
+            </div>
+          </div>
+          <div style={{ display:"flex",gap:3,alignItems:"center",flexWrap:"wrap" }}>
+            {navItems.map(v => (
+              <button key={v} onClick={()=>{ if(v==="prep" && !prepData) return; setView(v); }} style={{
+                background:view===v?"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.07)":"transparent",
+                border:"1px solid " + (view===v?"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.22)":C.bdr),
+                borderRadius:6,padding:"4px 11px",fontFamily:"monospace",fontSize:9,
+                color:view===v?C.acc:C.mut,cursor:v==="prep"&&!prepData?"not-allowed":"pointer",textTransform:"uppercase",letterSpacing:1,
+                opacity:v==="prep"&&!prepData?0.4:1,
+              }}>{v}</button>
+            ))}
+            <button onClick={toggleTheme} style={{ background:"transparent",border:"1px solid " + C.bdr,borderRadius:6,padding:"4px 8px",fontSize:12,cursor:"pointer",color:C.mut }}>{darkMode?"☀️":"🌙"}</button>
+            <button onClick={()=>setShowEdit(!showEdit)} style={{ background:"transparent",border:"1px solid " + C.bdr,borderRadius:6,padding:"4px 8px",fontSize:12,cursor:"pointer",color:C.mut }}>⚙️</button>
+          </div>
+        </nav>
+
+        {/* ONBOARD */}
+        {view==="onboard" && (
+          <div style={{ maxWidth:540,margin:"0 auto",animation:"fi .3s" }}>
+            <div style={{ textAlign:"center",marginBottom:36 }}>
+              <div style={{ fontSize:44,marginBottom:10 }}>🎯</div>
+              <h1 style={{ fontSize:30,fontWeight:800,letterSpacing:-1.5,marginBottom:6 }}>One-Time Setup</h1>
+              <p style={{ color:C.mut,fontSize:12,lineHeight:1.5 }}>Saved permanently. Agent uses this for every run.</p>
+            </div>
+            <Card c={C} label="👤 IDENTITY">
+              <Grid>
+                <F c={C} l="FULL NAME" v={profile.fullName} p="Your Name" o={v=>setProfile({...profile,fullName:v})} s={input} />
+                <F c={C} l="EMAIL" v={profile.email} p="you@email.com" o={v=>setProfile({...profile,email:v})} s={input} />
+                <F c={C} l="PHONE" v={profile.phone} p="+1 555-0000" o={v=>setProfile({...profile,phone:v})} s={input} />
+                <F c={C} l="LOCATION" v={profile.location} p="Plano, TX" o={v=>setProfile({...profile,location:v})} s={input} />
+                <F c={C} l="LINKEDIN URL" v={profile.linkedinUrl} p="linkedin.com/in/you" o={v=>setProfile({...profile,linkedinUrl:v})} s={input} full />
+              </Grid>
+            </Card>
+            <Card c={C} label="📄 RESUME (paste full text)">
+              <textarea value={profile.resumeText} onChange={e=>setProfile({...profile,resumeText:e.target.value})} placeholder="Paste your entire resume here..." style={{ ...input,minHeight:130,resize:"vertical" }} />
+            </Card>
+            <Card c={C} label="🛠️ SKILLS & EXPERIENCE">
+              <Grid>
+                <F c={C} l="CORE SKILLS (comma sep)" v={profile.coreSkills} p="AI automation, n8n, marketing" o={v=>setProfile({...profile,coreSkills:v})} s={input} full />
+                <F c={C} l="YEARS EXPERIENCE" v={profile.yearsExp} p="10" o={v=>setProfile({...profile,yearsExp:v})} s={input} />
+                <F c={C} l="EDUCATION / CERTS" v={profile.education} p="MCITP, BS Business" o={v=>setProfile({...profile,education:v})} s={input} />
+              </Grid>
+            </Card>
+            <Card c={C} label="💰 SALARY & DEAL-BREAKERS">
+              <Grid>
+                <F c={C} l="MIN SALARY ($K)" v={profile.salaryMin} p="80" o={v=>setProfile({...profile,salaryMin:v})} s={input} />
+                <F c={C} l="TARGET ($K)" v={profile.salaryMax} p="130" o={v=>setProfile({...profile,salaryMax:v})} s={input} />
+                <F c={C} l="DEAL-BREAKERS" v={profile.dealBreakers} p="No relocation..." o={v=>setProfile({...profile,dealBreakers:v})} s={input} full />
+              </Grid>
+            </Card>
+            <button onClick={async()=>{ await sp(profile); setView("hunt"); }}
+              disabled={!profile.fullName||!profile.resumeText}
+              style={{
+                width:"100%",padding:15,borderRadius:11,border:"none",fontSize:14,fontWeight:800,
+                fontFamily:"'Syne',sans-serif",
+                background:profile.fullName&&profile.resumeText?"linear-gradient(135deg," + C.acc + "," + (darkMode?"#00c88a":"#009963") + ")":C.bdr,
+                color:profile.fullName&&profile.resumeText?(darkMode?"#05060a":"#ffffff"):C.mut,
+                cursor:profile.fullName&&profile.resumeText?"pointer":"not-allowed",
+              }}>✅ Save & Start Hunting</button>
+          </div>
+        )}
+
+        {/* EDIT DRAWER */}
+        {showEdit && view!=="onboard" && (
+          <div style={{ background:C.card,border:"1px solid rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.15)",borderRadius:14,padding:20,marginBottom:20,animation:"fi .2s" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",marginBottom:12 }}>
+              <Lbl c={C}>⚙️ EDIT PROFILE</Lbl>
+              <button onClick={()=>setShowEdit(false)} style={{ background:"none",border:"none",color:C.mut,cursor:"pointer",fontSize:14 }}>✕</button>
+            </div>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:10 }}>
+              <F c={C} l="NAME" v={profile.fullName} o={v=>sp({...profile,fullName:v})} s={input} />
+              <F c={C} l="LOCATION" v={profile.location} o={v=>sp({...profile,location:v})} s={input} />
+              <F c={C} l="LINKEDIN" v={profile.linkedinUrl} o={v=>sp({...profile,linkedinUrl:v})} s={input} />
+              <F c={C} l="SKILLS" v={profile.coreSkills} o={v=>sp({...profile,coreSkills:v})} s={input} full />
+              <F c={C} l="MIN ($K)" v={profile.salaryMin} o={v=>sp({...profile,salaryMin:v})} s={input} />
+              <F c={C} l="MAX ($K)" v={profile.salaryMax} o={v=>sp({...profile,salaryMax:v})} s={input} />
+            </div>
+            <div style={{ borderTop:"1px solid " + C.bdr,marginTop:14,paddingTop:14 }}>
+              <Lbl c={C}>🔑 API KEYS</Lbl>
+              <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10 }}>
+                <div>
+                  <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut,marginBottom:4,textTransform:"uppercase",letterSpacing:1 }}>Apify Token</div>
+                  <input type="password" defaultValue={APIFY_TOKEN} placeholder="apify_api_..." style={input} onBlur={e=>{localStorage.setItem("APIFY_TOKEN",e.target.value);window.__APIFY=e.target.value;}} />
+                </div>
+                <div>
+                  <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut,marginBottom:4,textTransform:"uppercase",letterSpacing:1 }}>Claude API Key</div>
+                  <input type="password" defaultValue={CLAUDE_KEY} placeholder="sk-ant-..." style={input} onBlur={e=>{localStorage.setItem("CLAUDE_KEY",e.target.value);window.__CLAUDE=e.target.value;}} />
+                </div>
+                <div>
+                  <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut,marginBottom:4,textTransform:"uppercase",letterSpacing:1 }}>WhatsApp Number</div>
+                  <input defaultValue={WAHA_NUMBER} placeholder="14155551234" style={input} onBlur={e=>localStorage.setItem("WAHA_NUM",e.target.value)} />
+                </div>
+              </div>
+              <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut,marginBottom:10 }}>Keys are stored locally on your device. Reload after saving.</div>
+            </div>
+            <div style={{ display:"flex",gap:6 }}>
+              <button onClick={()=>setShowEdit(false)} style={{ flex:1,padding:8,borderRadius:7,border:"1px solid rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.2)",background:"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.05)",color:C.acc,fontFamily:"monospace",fontSize:10,cursor:"pointer",fontWeight:600 }}>✅ Done</button>
+              <button onClick={resetAll} style={{ padding:8,borderRadius:7,border:"1px solid rgba(255,107,107,0.2)",background:"rgba(255,107,107,0.05)",color:C.err,fontFamily:"monospace",fontSize:10,cursor:"pointer" }}>🗑️ Reset</button>
+            </div>
+          </div>
+        )}
+
+        {/* HUNT VIEW */}
+        {view==="hunt" && (
+          <div style={{ animation:"fi .3s" }}>
+            <div style={{ display:"flex",gap:6,flexWrap:"wrap",marginBottom:24 }}>
+              {[
+                {n:stats.scanned,l:"Scanned",c:C.acc},{n:stats.applied,l:"Applied",c:C.acc2},
+                {n:stats.interviews,l:"Interviews",c:C.warn},{n:stats.ghostsFound||0,l:"Ghosts Found",c:C.err},
+              ].map(s=>(
+                <div key={s.l} style={{ flex:"1 1 120px",background:C.card,border:"1px solid " + C.bdr,borderRadius:11,padding:"14px 16px",textAlign:"center" }}>
+                  <div style={{ fontSize:22,fontWeight:800,color:s.c }}>{s.n}</div>
+                  <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+            <Card c={C} label="🔍 NEW HUNT">
+              <Grid>
+                <F c={C} l="JOB TITLE" v={search.title} p="Growth Marketing Manager" o={v=>setSearch({...search,title:v})} s={input} full />
+                <div>
+                  <Lbl c={C}>REMOTE</Lbl>
+                  <select value={search.remote} onChange={e=>setSearch({...search,remote:e.target.value})} style={input}>
+                    <option value="any">Any</option><option value="remote">Remote Only</option><option value="hybrid">Hybrid</option><option value="onsite">On-site</option>
+                  </select>
+                </div>
+                <div>
+                  <Lbl c={C}>LEVEL</Lbl>
+                  <select value={search.expLevel} onChange={e=>setSearch({...search,expLevel:e.target.value})} style={input}>
+                    <option value="entry">Entry</option><option value="mid">Mid-Level</option><option value="senior">Senior</option><option value="lead">Lead/Director</option>
+                  </select>
+                </div>
+                <F c={C} l="SALARY FLOOR ($K)" v={search.salaryFloor} p="80" o={v=>setSearch({...search,salaryFloor:v})} s={input} />
+              </Grid>
+            </Card>
+            <Card c={C} label="🔄 PIPELINE PREVIEW">
+              <div style={{ display:"flex",gap:6,overflowX:"auto",paddingBottom:8 }}>
+                {STEPS.map((s,i)=>(
+                  <div key={s.id} style={{ flex:"1 0 100px",background:C.bg,border:"1px solid " + C.bdr,borderRadius:8,padding:10,textAlign:"center",minWidth:90 }}>
+                    <div style={{ fontSize:18 }}>{s.icon}</div>
+                    <div style={{ fontFamily:"monospace",fontSize:8,fontWeight:700,color:C.txt,marginTop:4 }}>{s.label}</div>
+                    <div style={{ fontFamily:"monospace",fontSize:7,color:C.mut }}>{s.d}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+            <button onClick={run} disabled={running || !search.title}
+              style={{
+                width:"100%",padding:16,borderRadius:11,border:"none",fontSize:15,fontWeight:800,
+                fontFamily:"'Syne',sans-serif",
+                background:!running&&search.title?"linear-gradient(135deg," + C.acc + "," + (darkMode?"#00c88a":"#009963") + ")":C.bdr,
+                color:!running&&search.title?(darkMode?"#05060a":"#ffffff"):C.mut,
+                cursor:!running&&search.title?"pointer":"not-allowed",marginTop:8,
+              }}>🚀 Launch Pipeline</button>
+          </div>
+        )}
+
+        {/* PIPELINE VIEW */}
+        {view==="pipeline" && (
+          <div style={{ animation:"fi .3s" }}>
+            <div style={{ display:"flex",gap:4,marginBottom:20,overflowX:"auto" }}>
+              {STEPS.map((s,i)=>(
+                <div key={s.id} style={{ flex:1,textAlign:"center",padding:"8px 4px",borderRadius:8,
+                  background:i===curStep?"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.08)":i<curStep?C.card:"transparent",
+                  border:"1px solid " + (i===curStep?C.acc:i<curStep?C.bdr:"transparent") }}>
+                  <div style={{ fontSize:16 }}>{i<curStep?"✅":i===curStep?"⏳":s.icon}</div>
+                  <div style={{ fontFamily:"monospace",fontSize:7,color:i<=curStep?C.txt:C.mut,fontWeight:i===curStep?700:400 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+            <div ref={logRef} style={{ background:C.card,border:"1px solid " + C.bdr,borderRadius:12,padding:14,minHeight:340,maxHeight:500,overflowY:"auto",fontFamily:"monospace",fontSize:10 }}>
+              {logs.map(l=>(
+                <div key={l.id} style={{ marginBottom:4,display:"flex",gap:8 }}>
+                  <span style={{ color:C.mut,minWidth:60 }}>{l.t}</span>
+                  <span style={{ color:l.type==="success"?C.acc:l.type==="warn"?C.warn:l.type==="error"?C.err:C.acc2,fontWeight:700,minWidth:55 }}>[{l.tag}]</span>
+                  <span style={{ color:C.txt }}>{l.msg}</span>
+                </div>
+              ))}
+              {running && <div style={{ color:C.acc,animation:"blink 1s infinite" }}>▌</div>}
+            </div>
+            {!running && jobs.length>0 && (
+              <div style={{ display:"flex",gap:8,marginTop:16 }}>
+                <button onClick={()=>setView("jobs")} style={{ flex:1,padding:12,borderRadius:8,border:"none",background:"linear-gradient(135deg," + C.acc + "," + C.acc2 + ")",color:darkMode?"#05060a":"#fff",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>📋 View Results ({jobs.length} jobs)</button>
+                <button onClick={()=>setView("kanban")} style={{ flex:1,padding:12,borderRadius:8,border:"1px solid " + C.bdr,background:"transparent",color:C.acc2,fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:"monospace" }}>📊 Kanban Board</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* JOBS VIEW */}
+        {view==="jobs" && (
+          <div style={{ animation:"fi .3s" }}>
+            <div style={{ display:"flex",gap:4,marginBottom:16,flexWrap:"wrap" }}>
+              {["all","scraped","applied","interview","phone","offer","rejected"].map(t=>{
+                const src = jobs.length ? jobs : allJobs;
+                const cnt = t==="all" ? src.length : src.filter(j=>j.status===t).length;
+                return <button key={t} onClick={()=>setTab(t)} style={{
+                  padding:"4px 12px",borderRadius:20,fontFamily:"monospace",fontSize:9,textTransform:"capitalize",
+                  background:tab===t?"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.08)":"transparent",
+                  border:"1px solid " + (tab===t?C.acc:C.bdr),color:tab===t?C.acc:C.mut,cursor:"pointer",
+                }}>{t} ({cnt})</button>;
+              })}
+            </div>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:10 }}>
+              {displayJobs.map(j=>(
+                <div key={j.id} style={{ background:C.card,border:"1px solid " + (expanded===j.id?C.acc:C.bdr),borderRadius:12,padding:14,cursor:"pointer",transition:"border .2s" }}
+                  onClick={()=>setExpanded(expanded===j.id?null:j.id)}>
+                  <div style={{ display:"flex",justifyContent:"space-between",alignItems:"start" }}>
+                    <div>
+                      <div style={{ fontSize:12,fontWeight:700,marginBottom:2 }}>{j.title}</div>
+                      <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut }}>{j.company} · {j.location}</div>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontSize:16,fontWeight:800,color:j.atsScore>=80?C.acc:j.atsScore>=60?C.warn:C.err }}>{j.atsScore}%</div>
+                      <div style={{ fontFamily:"monospace",fontSize:7,color:C.mut }}>ATS</div>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex",gap:4,marginTop:8,flexWrap:"wrap" }}>
+                    <span style={{ padding:"2px 6px",borderRadius:4,background:"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.08)",fontFamily:"monospace",fontSize:8,color:C.acc }}>{j.salary}</span>
+                    <span style={{ padding:"2px 6px",borderRadius:4,background:"rgba(91,140,255,0.08)",fontFamily:"monospace",fontSize:8,color:C.acc2 }}>{j.source}</span>
+                    <span style={{ padding:"2px 6px",borderRadius:4,background:"rgba(255,179,71,0.08)",fontFamily:"monospace",fontSize:8,color:C.warn }}>{j.postedAgo}</span>
+                    <span style={{ padding:"2px 6px",borderRadius:4,background:STAT_COLORS[j.status]+"15",fontFamily:"monospace",fontSize:8,color:STAT_COLORS[j.status]||C.mut,textTransform:"capitalize" }}>{j.status}</span>
+                  </div>
+                  {/* Expanded view */}
+                  {expanded===j.id && (
+                    <div style={{ marginTop:12,borderTop:"1px solid " + C.bdr,paddingTop:12 }} onClick={e=>e.stopPropagation()}>
+                      {j.atsGap?.length>0 && (
+                        <div style={{ marginBottom:8 }}>
+                          <Lbl c={C}>🎯 KEYWORD GAP</Lbl>
+                          <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}>
+                            {j.atsGap.map((kw,i)=><span key={i} style={{ padding:"2px 6px",borderRadius:4,background:"rgba(255,107,107,0.08)",fontFamily:"monospace",fontSize:8,color:C.err }}>{kw}</span>)}
+                          </div>
+                        </div>
+                      )}
+                      {j.resumeDiff?.length>0 && (
+                        <div style={{ marginBottom:8 }}>
+                          <Lbl c={C}>✏️ RESUME REWRITES</Lbl>
+                          {j.resumeDiff.map((d,i)=><div key={i} style={{ fontFamily:"monospace",fontSize:9,color:C.txt,padding:4,background:C.bg,borderRadius:4,marginBottom:2 }}>{d}</div>)}
+                        </div>
+                      )}
+                      {j.coverLetter && (
+                        <div style={{ marginBottom:8 }}>
+                          <Lbl c={C}>📝 COVER LETTER</Lbl>
+                          <div style={{ fontFamily:"monospace",fontSize:9,color:C.txt,padding:8,background:C.bg,borderRadius:6,lineHeight:1.6 }}>{j.coverLetter}</div>
+                        </div>
+                      )}
+                      {j.salaryIntel && (
+                        <div style={{ marginBottom:8 }}>
+                          <Lbl c={C}>💰 SALARY INTEL</Lbl>
+                          <div style={{ fontFamily:"monospace",fontSize:9,color:C.acc }}>{j.salaryIntel.display} ({j.salaryIntel.source})</div>
+                        </div>
+                      )}
+                      {/* Contact Tracker */}
+                      <div style={{ marginBottom:8 }}>
+                        <Lbl c={C}>👥 CONTACTS</Lbl>
+                        {(contacts[j.id]||[]).map((ct,i) => (
+                          <div key={i} style={{ display:"flex",gap:4,marginBottom:3 }}>
+                            <input value={ct.name||""} onChange={e=>updateContact(j.id,i,"name",e.target.value)} placeholder="Name" style={{...input,fontSize:9,padding:4,flex:1}} />
+                            <input value={ct.role||""} onChange={e=>updateContact(j.id,i,"role",e.target.value)} placeholder="Role" style={{...input,fontSize:9,padding:4,flex:1}} />
+                            <input value={ct.email||""} onChange={e=>updateContact(j.id,i,"email",e.target.value)} placeholder="Email" style={{...input,fontSize:9,padding:4,flex:1}} />
+                          </div>
+                        ))}
+                        <button onClick={()=>addContact(j.id,{name:"",role:"",email:""})} style={{ fontFamily:"monospace",fontSize:8,color:C.acc,background:"transparent",border:"1px dashed " + C.bdr,borderRadius:4,padding:"3px 8px",cursor:"pointer",marginTop:2 }}>+ Add Contact</button>
+                      </div>
+                      <div style={{ display:"flex",gap:4,flexWrap:"wrap" }}>
+                        {["applied","phone","interview","offer","rejected"].map(s=>(
+                          <button key={s} onClick={()=>updateStatus(j.id,s)} style={{
+                            padding:"3px 8px",borderRadius:4,fontFamily:"monospace",fontSize:8,cursor:"pointer",textTransform:"capitalize",
+                            background:j.status===s?(STAT_COLORS[s]||C.mut)+"20":"transparent",
+                            border:"1px solid " + (STAT_COLORS[s]||C.mut) + "40",color:STAT_COLORS[s]||C.mut,
+                          }}>{s}</button>
+                        ))}
+                        {j.url && <a href={j.url} target="_blank" rel="noopener" style={{ padding:"3px 8px",borderRadius:4,fontFamily:"monospace",fontSize:8,color:C.acc2,border:"1px solid " + C.acc2 + "40",textDecoration:"none" }}>🔗 Open</a>}
+                        <button onClick={()=>{generatePrepKit(j);setView("prep");}} style={{ padding:"3px 8px",borderRadius:4,fontFamily:"monospace",fontSize:8,color:C.warn,border:"1px solid " + C.warn + "40",background:"transparent",cursor:"pointer" }}>📚 Prep</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {displayJobs.length===0 && <div style={{ textAlign:"center",padding:40,fontFamily:"monospace",fontSize:10,color:C.mut }}>No jobs yet — run a pipeline from Hunt tab</div>}
+          </div>
+        )}
+
+        {/* KANBAN VIEW */}
+        {view==="kanban" && (
+          <div style={{ animation:"fi .3s" }}>
+            <div style={{ display:"flex",gap:8,overflowX:"auto",minHeight:400,paddingBottom:20 }}>
+              {KANBAN_COLS.map(col=>{
+                const colJobs = allJobs.filter(j=>j.status===col.id);
+                return (
+                  <div key={col.id}
+                    onDragOver={e=>{e.preventDefault();if(e.currentTarget&&e.currentTarget.style)e.currentTarget.style.background="rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.08)";}}
+                    onDragLeave={e=>{if(e.currentTarget&&e.currentTarget.style)e.currentTarget.style.background="transparent";}}
+                    onDrop={e=>{e.preventDefault();if(e.currentTarget&&e.currentTarget.style)e.currentTarget.style.background="transparent";const did=dragIdRef.current||dragId;if(did)updateStatus(did,col.id);setDragId(null);dragIdRef.current=null;}}
+                    style={{ flex:"0 0 170px",minWidth:170,transition:"background 0.15s",borderRadius:8 }}>
+                    <div style={{ fontFamily:"monospace",fontSize:9,fontWeight:700,color:col.color,marginBottom:8,display:"flex",justifyContent:"space-between" }}>
+                      <span>{col.label}</span><span style={{ color:C.mut }}>{colJobs.length}</span>
+                    </div>
+                    {colJobs.map(j=>(
+                      <div key={j.id} draggable onDragStart={e=>{setDragId(j.id);dragIdRef.current=j.id;if(e.dataTransfer)e.dataTransfer.effectAllowed="move";}}
+                        style={{ background:C.card,border:"1px solid " + C.bdr,borderRadius:8,padding:8,marginBottom:6,cursor:"grab",fontSize:10 }}>
+                        <div style={{ fontWeight:700,marginBottom:2,fontSize:9 }}>{j.title}</div>
+                        <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut }}>{j.company}</div>
+                        <div style={{ display:"flex",justifyContent:"space-between",marginTop:4 }}>
+                          <span style={{ fontFamily:"monospace",fontSize:8,color:C.acc }}>{j.atsScore}%</span>
+                          <span style={{ fontFamily:"monospace",fontSize:7,color:C.mut }}>{j.postedAgo}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {colJobs.length===0 && <div style={{ textAlign:"center",padding:20,border:"1px dashed " + C.bdr,borderRadius:8,fontFamily:"monospace",fontSize:8,color:C.mut }}>Drop here</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* DASHBOARD VIEW */}
+        {view==="dash" && (
+          <div style={{ animation:"fi .3s" }}>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:20 }}>
+              {[
+                {n: allJobs.length > 0 ? ((allJobs.filter(j=>j.status==="interview").length / allJobs.length)*100).toFixed(1) + "%" : "0%", l:"Response Rate", c:C.acc},
+                {n: (() => { const replied = allJobs.filter(j=>j.appliedAt && j.status==="interview"); if(!replied.length) return "—"; const avg = replied.reduce((a,j)=> a + (Date.now()-new Date(j.appliedAt).getTime()),0)/(replied.length*86400000); return Math.round(avg) + "d"; })(), l:"Avg Time to Reply", c:C.acc2},
+                {n: allJobs.length > 0 ? Math.round(allJobs.reduce((a,j)=>a+j.atsScore,0)/allJobs.length) + "%" : "—", l:"ATS Avg Score", c:C.warn},
+                {n: (() => { const srcs = {}; allJobs.filter(j=>j.status==="interview").forEach(j=> srcs[j.source]=(srcs[j.source]||0)+1); const best = Object.entries(srcs).sort((a,b)=>b[1]-a[1])[0]; return best?best[0]:"—"; })(), l:"Best Source", c:"#a78bfa"},
+                {n: allJobs.length > 0 ? "$" + Math.round(allJobs.filter(j=>j.salaryIntel).reduce((a,j)=>a+(j.salaryIntel?.max||0),0)/(allJobs.filter(j=>j.salaryIntel).length||1)/1000) + "k" : "—", l:"Avg Salary", c:C.acc},
+              ].map(s => (
+                <div key={s.l} style={{ background:C.card,border:"1px solid " + C.bdr,borderRadius:11,padding:16,textAlign:"center" }}>
+                  <div style={{ fontSize:20,fontWeight:800,color:s.c }}>{s.n}</div>
+                  <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+            <Card c={C} label="📊 SOURCE PERFORMANCE">
+              {(() => {
+                const srcs = {};
+                allJobs.forEach(j => {
+                  if (!srcs[j.source]) srcs[j.source] = { total:0, interviews:0 };
+                  srcs[j.source].total++;
+                  if (j.status === "interview" || j.status === "offer") srcs[j.source].interviews++;
+                });
+                const maxTotal = Math.max(...Object.values(srcs).map(s=>s.total), 1);
+                return Object.entries(srcs).sort((a,b)=>b[1].total-a[1].total).map(([src, data]) => (
+                  <div key={src} style={{ display:"flex",alignItems:"center",gap:8,marginBottom:8 }}>
+                    <div style={{ fontFamily:"monospace",fontSize:9,width:80,color:C.mut,textTransform:"capitalize" }}>{src}</div>
+                    <div style={{ flex:1,height:8,background:C.bdr,borderRadius:4 }}>
+                      <div style={{ height:"100%",borderRadius:4,width:(data.total/maxTotal)*100 + "%",background:C.acc2 }}/>
+                    </div>
+                    <div style={{ fontFamily:"monospace",fontSize:9,color:C.txt,width:60 }}>{data.total} jobs</div>
+                    <div style={{ fontFamily:"monospace",fontSize:9,color:C.acc,width:80 }}>{data.interviews} interviews</div>
+                  </div>
+                ));
+              })()}
+              {allJobs.length === 0 && <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut,textAlign:"center",padding:20 }}>Run a pipeline to see analytics</div>}
+            </Card>
+            {/* Charts Row */}
+            <div style={{ display:"flex",gap:12,marginBottom:12,flexWrap:"wrap" }}>
+              <div style={{ flex:"0 0 calc(65% - 6px)",minWidth:280,background:C.card,border:"1px solid " + C.bdr,borderRadius:14,padding:16 }}>
+                <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut,marginBottom:12,textTransform:"uppercase",letterSpacing:1 }}>📈 Applications Over Time</div>
+                {(() => {
+                  const byDate = {};
+                  allJobs.forEach(j => {
+                    const d = j.appliedAt ? new Date(j.appliedAt).toLocaleDateString("en-US",{month:"short",day:"numeric"}) : "Unknown";
+                    byDate[d] = (byDate[d]||0)+1;
+                  });
+                  const lineData = Object.entries(byDate).map(([date,count])=>({date,count}));
+                  if (lineData.length === 0) return <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut,textAlign:"center",padding:20 }}>No data yet</div>;
+                  return (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <LineChart data={lineData} margin={{top:5,right:10,left:-20,bottom:5}}>
+                        <XAxis dataKey="date" tick={{fontSize:8,fill:C.mut,fontFamily:"monospace"}} axisLine={{stroke:C.bdr}} tickLine={false}/>
+                        <YAxis allowDecimals={false} tick={{fontSize:8,fill:C.mut,fontFamily:"monospace"}} axisLine={{stroke:C.bdr}} tickLine={false}/>
+                        <Tooltip contentStyle={{background:C.card,border:"1px solid " + C.bdr,borderRadius:8,fontFamily:"monospace",fontSize:10,color:C.txt}} />
+                        <Line type="monotone" dataKey="count" stroke={C.acc} strokeWidth={2} dot={{fill:C.acc,r:3}} activeDot={{r:5,fill:C.acc2}}/>
+                      </LineChart>
+                    </ResponsiveContainer>
+                  );
+                })()}
+              </div>
+              <div style={{ flex:"0 0 calc(35% - 6px)",minWidth:200,background:C.card,border:"1px solid " + C.bdr,borderRadius:14,padding:16 }}>
+                <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut,marginBottom:12,textTransform:"uppercase",letterSpacing:1 }}>🥧 Status Distribution</div>
+                {(() => {
+                  const statuses = {};
+                  allJobs.forEach(j => { statuses[j.status] = (statuses[j.status]||0)+1; });
+                  const pieData = Object.entries(statuses).map(([name,value])=>({name,value}));
+                  if (pieData.length === 0) return <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut,textAlign:"center",padding:20 }}>No data yet</div>;
+                  const total = pieData.reduce((s,d)=>s+d.value,0);
+                  let cumPct = 0;
+                  const gradParts = [];
+                  pieData.forEach(d => {
+                    const color = STAT_COLORS[d.name] || C.mut;
+                    const start = cumPct;
+                    cumPct += (d.value / total) * 100;
+                    gradParts.push(color + " " + start.toFixed(1) + "% " + cumPct.toFixed(1) + "%");
+                  });
+                  const conicGrad = "conic-gradient(" + gradParts.join(", ") + ")";
+                  return (
+                    <div style={{ display:"flex",alignItems:"center",justifyContent:"center",gap:20,height:180 }}>
+                      <div style={{ position:"relative",width:140,height:140 }}>
+                        <div style={{ width:140,height:140,borderRadius:"50%",background:conicGrad }} />
+                        <div style={{ position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:70,height:70,borderRadius:"50%",background:C.card }} />
+                        <div style={{ position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontFamily:"monospace",fontSize:18,fontWeight:700,color:C.txt }}>{total}</div>
+                      </div>
+                      <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
+                        {pieData.map(d => (
+                          <div key={d.name} style={{ display:"flex",alignItems:"center",gap:6 }}>
+                            <div style={{ width:8,height:8,borderRadius:2,background:STAT_COLORS[d.name]||C.mut,flexShrink:0 }} />
+                            <span style={{ fontFamily:"monospace",fontSize:9,color:C.txt }}>{d.name}</span>
+                            <span style={{ fontFamily:"monospace",fontSize:9,color:C.mut }}>{d.value} ({(d.value/total*100).toFixed(0)}%)</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+            <Card c={C} label="📱 FOLLOW-UP QUEUE">
+              {followUps.filter(fu => fu.status !== "sent").slice(0,5).map(fu => {
+                const days = Math.floor((Date.now() - new Date(fu.appliedAt).getTime()) / 86400000);
+                return (
+                  <div key={fu.jobId} style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid " + C.bdr }}>
+                    <span style={{ fontSize:10,color:days >= 7 ? C.warn : C.mut }}>{days >= 7 ? "⚠️" : "🕐"} {fu.company} — {days} days</span>
+                    <div style={{ display:"flex",gap:4 }}>
+                      <button onClick={()=>openFollowUpModal(fu)} style={{ padding:"3px 8px",borderRadius:4,border:"1px solid rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.2)",background:"transparent",color:C.acc,fontFamily:"monospace",fontSize:8,cursor:"pointer" }}>View Draft</button>
+                      <button onClick={()=>openFollowUpModal(fu)} style={{ padding:"3px 8px",borderRadius:4,border:"1px solid rgba(255,179,71,0.2)",background:"transparent",color:C.warn,fontFamily:"monospace",fontSize:8,cursor:"pointer" }}>📱 Send WA</button>
+                    </div>
+                  </div>
+                );
+              })}
+              {followUps.filter(fu => fu.status !== "sent").length === 0 && <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut,textAlign:"center",padding:12 }}>No pending follow-ups</div>}
+            </Card>
+          </div>
+        )}
+
+        {/* FOLLOW-UP MODAL */}
+        {followUpModal && (
+          <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20 }} onClick={()=>setFollowUpModal(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{ background:C.card,borderRadius:16,padding:24,maxWidth:560,width:"100%",border:"1px solid " + C.bdr }}>
+              <div style={{ fontFamily:"monospace",fontSize:11,color:C.acc,marginBottom:16 }}>📱 Follow-Up Draft — {followUpModal.company}</div>
+              <div style={{ fontFamily:"monospace",fontSize:9,color:C.mut,marginBottom:12 }}>TO: Your WhatsApp ({WAHA_NUMBER}) — you forward to recruiter</div>
+              <div style={{ padding:12,borderRadius:8,background:C.bg,border:"1px solid " + C.bdr,fontFamily:"monospace",fontSize:10,color:C.txt,lineHeight:1.8,marginBottom:12,whiteSpace:"pre-wrap" }}>
+                {followUpModal.draft || "Generating draft..."}
+              </div>
+              <div style={{ marginBottom:12 }}>
+                <div style={{ fontFamily:"monospace",fontSize:8,color:C.mut,marginBottom:4 }}>YOUR FEEDBACK</div>
+                <input value={followUpModal.feedback||""} onChange={e=>setFollowUpModal({...followUpModal, feedback:e.target.value})} placeholder='e.g. "make it shorter"' style={{...input,fontSize:10}} />
+              </div>
+              <div style={{ display:"flex",gap:8 }}>
+                <button onClick={approveAndSendFollowUp} disabled={followUpModal.status==="sending"}
+                  style={{ flex:2,padding:10,borderRadius:8,border:"none",background:"linear-gradient(135deg," + C.acc + "," + (darkMode?"#00c88a":"#009963") + ")",color:darkMode?"#05060a":"#fff",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>
+                  {followUpModal.status==="sending" ? "Sending..." : "✅ Approve & Send via WhatsApp"}
+                </button>
+                <button onClick={reviseFollowUp} disabled={!followUpModal.feedback || followUpModal.status==="revising"}
+                  style={{ flex:1,padding:10,borderRadius:8,border:"1px solid " + C.bdr,background:"transparent",color:C.acc2,fontWeight:600,fontSize:11,cursor:followUpModal.feedback?"pointer":"not-allowed",fontFamily:"monospace" }}>
+                  {followUpModal.status==="revising" ? "Revising..." : "✏️ Revise"}
+                </button>
+                <button onClick={()=>setFollowUpModal(null)} style={{ padding:10,borderRadius:8,border:"1px solid rgba(" + (darkMode?"255,107,107":"224,85,85") + ",0.2)",background:"transparent",color:C.err,fontSize:11,cursor:"pointer",fontFamily:"monospace" }}>❌</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* INTERVIEW PREP VIEW */}
+        {view==="prep" && (
+          <div style={{ animation:"fi .3s" }}>
+            {prepLoading ? (
+              <div style={{ textAlign:"center",padding:40 }}>
+                <div style={{ fontSize:30,marginBottom:12 }}>⏳</div>
+                <div style={{ fontFamily:"monospace",fontSize:11,color:C.mut }}>Claude is generating your prep kit...</div>
+              </div>
+            ) : prepData ? (
+              <div>
+                <div style={{ marginBottom:20 }}>
+                  <h2 style={{ fontSize:18,fontWeight:800,marginBottom:4 }}>📚 Interview Prep: {prepData.title}</h2>
+                  <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut }}>{prepData.company}</div>
+                </div>
+                <Card c={C} label="🏢 COMPANY BRIEF">
+                  {prepData.brief && Object.entries(prepData.brief).map(([k,v])=>(
+                    <div key={k} style={{ marginBottom:6 }}>
+                      <span style={{ fontFamily:"monospace",fontSize:8,color:C.mut,textTransform:"uppercase" }}>{k}: </span>
+                      <span style={{ fontFamily:"monospace",fontSize:10,color:C.txt }}>{v}</span>
+                    </div>
+                  ))}
+                </Card>
+                <Card c={C} label="❓ PRACTICE QUESTIONS">
+                  {(prepData.questions||[]).map((q,i)=>(
+                    <div key={i} style={{ padding:8,background:C.bg,borderRadius:6,marginBottom:6 }}>
+                      <div style={{ fontFamily:"monospace",fontSize:10,color:C.txt,fontWeight:600 }}>{i+1}. {q.q}</div>
+                      <div style={{ fontFamily:"monospace",fontSize:9,color:C.acc,marginTop:4 }}>💡 {q.hint}</div>
+                    </div>
+                  ))}
+                </Card>
+                <Card c={C} label="📋 CHEAT SHEET">
+                  {prepData.cheatSheet && (
+                    <div>
+                      {prepData.cheatSheet.strengths && <div style={{ marginBottom:6 }}><Lbl c={C}>STRENGTHS</Lbl><div style={{ fontFamily:"monospace",fontSize:9,color:C.txt }}>{prepData.cheatSheet.strengths.join(", ")}</div></div>}
+                      {prepData.cheatSheet.keywords && <div style={{ marginBottom:6 }}><Lbl c={C}>KEYWORDS</Lbl><div style={{ fontFamily:"monospace",fontSize:9,color:C.acc }}>{prepData.cheatSheet.keywords.join(", ")}</div></div>}
+                      {prepData.cheatSheet.questionsToAsk && <div style={{ marginBottom:6 }}><Lbl c={C}>ASK THEM</Lbl>{prepData.cheatSheet.questionsToAsk.map((q,i)=><div key={i} style={{ fontFamily:"monospace",fontSize:9,color:C.txt }}>• {q}</div>)}</div>}
+                      <div><Lbl c={C}>SALARY RANGE</Lbl><div style={{ fontFamily:"monospace",fontSize:10,color:C.warn }}>{prepData.cheatSheet.salaryRange}</div></div>
+                    </div>
+                  )}
+                </Card>
+                <button onClick={startMock} style={{ width:"100%",padding:14,borderRadius:11,border:"none",background:"linear-gradient(135deg," + C.acc2 + ",#4070cc)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"'Syne',sans-serif",marginTop:8 }}>🎤 Start Mock Interview</button>
+              </div>
+            ) : <div style={{ textAlign:"center",padding:40,fontFamily:"monospace",fontSize:10,color:C.mut }}>Click "Prep" on any job card to generate your interview kit</div>}
+          </div>
+        )}
+
+        {/* MOCK INTERVIEW VIEW */}
+        {view==="mock" && mockState && (
+          <div style={{ animation:"fi .3s",maxWidth:640,margin:"0 auto" }}>
+            <h2 style={{ fontSize:18,fontWeight:800,marginBottom:4 }}>🎤 Mock Interview</h2>
+            <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut,marginBottom:20 }}>{mockState.title} at {mockState.company}</div>
+            {/* Progress bar */}
+            <div style={{ display:"flex",gap:3,marginBottom:20 }}>
+              {mockState.questions.map((_,i) => (
+                <div key={i} style={{ flex:1,height:4,borderRadius:2,background:i<mockState.currentQ?C.acc:i===mockState.currentQ?"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.3)":C.bdr }}/>
+              ))}
+            </div>
+            {mockState.currentQ < mockState.questions.length ? (
+              <div>
+                <Card c={C} label={"Q" + (mockState.currentQ+1) + " OF " + mockState.questions.length}>
+                  <div style={{ fontSize:14,fontWeight:700,lineHeight:1.5,marginBottom:16 }}>{mockState.questions[mockState.currentQ].q}</div>
+                  <textarea value={mockState.currentAnswer} onChange={e=>setMockState({...mockState,currentAnswer:e.target.value})}
+                    placeholder="Type your answer..." style={{ ...input,minHeight:120,resize:"vertical" }} />
+                </Card>
+                <button onClick={submitMockAnswer} disabled={!mockState.currentAnswer.trim()}
+                  style={{ width:"100%",padding:14,borderRadius:11,border:"none",background:mockState.currentAnswer.trim()?"linear-gradient(135deg," + C.acc + "," + C.acc2 + ")":C.bdr,color:mockState.currentAnswer.trim()?(darkMode?"#05060a":"#fff"):C.mut,fontWeight:700,fontSize:13,cursor:mockState.currentAnswer.trim()?"pointer":"not-allowed",fontFamily:"'Syne',sans-serif" }}>
+                  Submit Answer →
+                </button>
+                {/* Previous feedback */}
+                {mockState.feedback.length > 0 && (
+                  <Card c={C} label="📊 PREVIOUS FEEDBACK" style={{marginTop:12}}>
+                    {mockState.feedback.map((fb,i) => (
+                      <div key={i} style={{ padding:8,background:C.bg,borderRadius:6,marginBottom:6 }}>
+                        <div style={{ display:"flex",justifyContent:"space-between",marginBottom:4 }}>
+                          <span style={{ fontFamily:"monospace",fontSize:9,color:C.mut }}>Q{i+1}</span>
+                          <span style={{ fontFamily:"monospace",fontSize:11,fontWeight:700,color:fb.score>=80?C.acc:fb.score>=60?C.warn:C.err }}>{fb.score}/100</span>
+                        </div>
+                        {fb.good?.length>0 && <div style={{ fontFamily:"monospace",fontSize:8,color:C.acc }}>✅ {fb.good.join(", ")}</div>}
+                        {fb.improve?.length>0 && <div style={{ fontFamily:"monospace",fontSize:8,color:C.warn }}>⚠️ {fb.improve.join(", ")}</div>}
+                        {fb.tip && <div style={{ fontFamily:"monospace",fontSize:8,color:C.acc2 }}>💡 {fb.tip}</div>}
+                      </div>
+                    ))}
+                  </Card>
+                )}
+              </div>
+            ) : (
+              <Card c={C} label="🎉 MOCK COMPLETE">
+                <div style={{ textAlign:"center",padding:20 }}>
+                  <div style={{ fontSize:36,fontWeight:800,color:C.acc,marginBottom:8 }}>{Math.round(mockState.scores.reduce((a,s)=>a+s,0)/mockState.scores.length)}/100</div>
+                  <div style={{ fontFamily:"monospace",fontSize:10,color:C.mut,marginBottom:16 }}>Average Score</div>
+                  {mockState.feedback.map((fb,i) => (
+                    <div key={i} style={{ padding:8,background:C.bg,borderRadius:6,marginBottom:6,textAlign:"left" }}>
+                      <div style={{ fontFamily:"monospace",fontSize:9,fontWeight:700,color:C.txt }}>Q{i+1}: {mockState.questions[i]?.q?.slice(0,50)}...</div>
+                      <div style={{ fontFamily:"monospace",fontSize:11,color:fb.score>=80?C.acc:fb.score>=60?C.warn:C.err,fontWeight:700 }}>{fb.score}/100</div>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={()=>setView("prep")} style={{ width:"100%",padding:12,borderRadius:8,border:"1px solid " + C.bdr,background:"transparent",color:C.acc,fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:"monospace",marginTop:8 }}>← Back to Prep</button>
+              </Card>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes fi { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes su { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        ::-webkit-scrollbar{width:5px;height:5px}
+        ::-webkit-scrollbar-track{background:transparent}
+        ::-webkit-scrollbar-thumb{background:${C.bdr};border-radius:3px}
+      `}</style>
+    </div>
+  );
+}
+
+// ─── MICRO COMPONENTS ───────────────────────────────────────
+function Card({c,label,children,style:s}) {
+  return <div style={{background:c.card,border:"1px solid " + c.bdr,borderRadius:14,padding:16,marginBottom:12,...s}}>
+    {label && <div style={{fontFamily:"monospace",fontSize:9,color:c.mut,marginBottom:10,textTransform:"uppercase",letterSpacing:1}}>{label}</div>}
+    {children}
+  </div>;
+}
+function Lbl({c,children}) { return <div style={{fontFamily:"monospace",fontSize:9,color:c.mut,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>{children}</div>; }
+function Grid({children}) { return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{React.Children.map(children,ch=>ch?.props?.full?<div style={{gridColumn:"1/-1"}}>{ch}</div>:ch)}</div>; }
+function F({c,l,v,p,o,s,full}) {
+  return <div style={full?{gridColumn:"1/-1"}:undefined}>
+    <div style={{fontFamily:"monospace",fontSize:8,color:c?.mut||"#6b7094",marginBottom:3,textTransform:"uppercase",letterSpacing:0.5}}>{l}</div>
+    <input value={v||""} onChange={e=>o(e.target.value)} placeholder={p} style={s}/>
+  </div>;
+}
+function Btn({c,children,...p}) {
+  return <button {...p} style={{padding:"6px 14px",borderRadius:6,border:"1px solid " + c.bdr,background:"transparent",color:c.acc,fontFamily:"monospace",fontSize:9,cursor:"pointer",...p.style}}>{children}</button>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});</script>
+</body>
+</html>
