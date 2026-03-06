@@ -147,8 +147,8 @@ async function runApifyActor(actorId, input) {
   const runData = await startRes.json();
   const runId = runData.data?.id;
   if (!runId) throw new Error("No run ID returned");
-  for (let i = 0; i < 40; i++) {
-    await new Promise(r => setTimeout(r, 3000));
+  for (let i = 0; i < 80; i++) {
+    await new Promise(r => setTimeout(r, 5000));
     const statusRes = await fetch("https://api.apify.com/v2/actor-runs/" + runId + "?token=" + APIFY_TOKEN);
     const statusData = await statusRes.json();
     const status = statusData.data?.status;
@@ -573,12 +573,12 @@ function App() {
           </div>
           <div style={{ display:"flex",gap:3,alignItems:"center",flexWrap:"wrap" }}>
             {navItems.map(v => (
-              <button key={v} onClick={()=>{ if(v==="prep" && !prepData) return; setView(v); }} style={{
+              <button key={v} onClick={()=>{ if(v==="prep" && !prepData) { setPrepData({empty:true}); setView("prep"); return; } setView(v); }} style={{
                 background:view===v?"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.07)":"transparent",
                 border:"1px solid " + (view===v?"rgba(" + (darkMode?"0,229,160":"0,184,122") + ",0.22)":C.bdr),
                 borderRadius:6,padding:"4px 11px",fontFamily:"monospace",fontSize:9,
-                color:view===v?C.acc:C.mut,cursor:v==="prep"&&!prepData?"not-allowed":"pointer",textTransform:"uppercase",letterSpacing:1,
-                opacity:v==="prep"&&!prepData?0.4:1,
+                color:view===v?C.acc:C.mut,cursor:"pointer",textTransform:"uppercase",letterSpacing:1,
+                opacity:v==="prep"&&!prepData?0.55:1,
               }}>{v}</button>
             ))}
             <button onClick={toggleTheme} style={{ background:"transparent",border:"1px solid " + C.bdr,borderRadius:6,padding:"2px 4px",fontSize:11,cursor:"pointer",color:C.mut }}>{darkMode?"☀️":"🌙"}</button>
