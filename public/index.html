@@ -138,31 +138,66 @@ async function claude(prompt, sys = "", maxTok = 1500) {
 }
 
 // ─── APIFY HELPERS ───────────────────────────────────────────
-async function runApifyActor(actorId, input) {
-  const startUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_TOKEN}`;
-  const startRes = await fetch(startUrl, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
-  });
-  if (!startRes.ok) throw new Error("Apify start failed: " + startRes.status);
-  const runData = await startRes.json();
-  const runId = runData.data?.id;
-  if (!runId) throw new Error("No run ID returned");
-  for (let i = 0; i < 80; i++) {
-    await new Promise(r => setTimeout(r, 5000));
-    const statusRes = await fetch("https://api.apify.com/v2/actor-runs/" + runId + "?token=" + APIFY_TOKEN);
-    const statusData = await statusRes.json();
-    const status = statusData.data?.status;
-    if (status === "SUCCEEDED") {
-      const dsId = statusData.data?.defaultDatasetId;
-      const itemsRes = await fetch("https://api.apify.com/v2/datasets/" + dsId + "/items?token=" + APIFY_TOKEN + "&limit=50");
-      return await itemsRes.json();
+async function runApifyActor(actorId, input, onProgress) {
+      console.log("[Apify] Starting actor run...");
+      const startUrl = `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_TOKEN}`;
+      let startRes;
+      try {
+        startRes = await fetch(startUrl, {
+          method: "POST", headers: { "Content-Type": "application/json" }, 
+          body: JSON.stringify(input),
+        });
+      } catch(e) {
+        console.error("[Apify] Network error starting actor:", e.message);
+        throw new Error("Apify network error: " + e.message);
+      }
+      if (!startRes.ok) {
+        const errText = await startRes.text().catch(() => "");
+        console.error("[Apify] Start failed:", startRes.status, errText);
+        throw new Error("Apify start failed: " + startRes.status);
+      }
+      const runData = await startRes.json();
+      const runId = runData.data?.id;
+      if (!runId) {
+        console.error("[Apify] No run ID in response");
+        throw new Error("No run ID returned");
+      }
+      console.log("[Apify] Run started, ID:", runId);
+      let lastStatus = "";
+      for (let i = 0; i < 80; i++) {
+        await new Promise(r => setTimeout(r, 5000));
+        if (onProgress) onProgress(i + 1, 80, lastStatus);
+        try {
+          const statusRes = await fetch("https://api.apify.com/v2/actor-runs/" + runId + "?token=" + APIFY_TOKEN);
+          if (!statusRes.ok) {
+            console.warn("[Apify] Poll " + (i+1) + " status check HTTP error:", statusRes.status);
+            continue;
+          }
+          const statusData = await statusRes.json();
+          const status = statusData.data?.status;
+          lastStatus = status || "UNKNOWN";
+          console.log("[Apify] Poll " + (i+1) + "/80 status:", status);
+          if (status === "SUCCEEDED") {
+            const dsId = statusData.data?.defaultDatasetId;
+            console.log("[Apify] Fetching dataset:", dsId);
+            const itemsRes = await fetch("https://api.apify.com/v2/datasets/" + dsId + "/items?token=" + APIFY_TOKEN + "&limit=50");
+            const items = await itemsRes.json();
+            console.log("[Apify] Got " + (items || []).length + " items");
+            return items;
+          }
+          if (status === "FAILED" || status === "ABORTED") {
+            console.error("[Apify] Actor " + status);
+            throw new Error("Actor " + status);
+          }
+        } catch(e) {
+          if (e.message.startsWith("Actor ")) throw e;
+          console.warn("[Apify] Poll " + (i+1) + " error (will retry):", e.message);
+        }
+      }
+      throw new Error("Actor timed out after 80 polls (~7min)");
     }
-    if (status === "FAILED" || status === "ABORTED") throw new Error("Actor " + status);
-  }
-  throw new Error("Actor timed out");
-}
 
-async function scrapeJobSpy(title, location, { remote, expLevel } = {}) {
+async function scrapeJobSpy(title, location, { remote, expLevel } = {}, onProgress) {
       const input = {
         search_terms: [title],
         country: "United States",
@@ -174,7 +209,7 @@ async function scrapeJobSpy(title, location, { remote, expLevel } = {}) {
         job_type: expLevel === "internship" ? "internship" : "all",
         currency: "USD",
       };
-      const items = await runApifyActor(ACTORS.allJobs, input);
+      const items = await runApifyActor(ACTORS.allJobs, input, onProgress);
       return (items || []).map((j, i) => ({
         id: "js-" + (j.platform_url || j.official_url || Date.now()) + "-" + i,
         title: j.title || "Unknown", company: j.company_name || "Unknown",
@@ -302,7 +337,10 @@ function App() {
     await wait(300);
     let scraped = [];
     try {
-      scraped = await scrapeJobSpy(search.title, profile.location, { remote: search.remote, expLevel: search.expLevel });
+      scraped = await scrapeJobSpy(search.title, profile.location, { remote: search.remote, expLevel: search.expLevel }, (poll, max, st) => {
+              if (poll === 1) log("SCRAPE","info","Apify actor running... polling every 5s");
+              if (poll % 6 === 0) log("SCRAPE","info","Still waiting... " + Math.round(poll*5/60) + "m elapsed (status: " + (st||"RUNNING") + ")");
+            });
       const srcCounts = {};
       scraped.forEach(j => { srcCounts[j.source] = (srcCounts[j.source]||0) + 1; });
       Object.entries(srcCounts).forEach(([src, cnt]) => { log("SCRAPE","success",src + ": " + cnt + " jobs ✅"); });
